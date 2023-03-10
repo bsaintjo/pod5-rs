@@ -1,5 +1,15 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+use std::{fs::File, io::{SeekFrom, Seek, Read}};
+
+const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
+
+fn read_footer(mut file: File) -> eyre::Result<()> {
+    let file_size = file.metadata()?.len();
+    let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
+    let footer_length = footer_length_end - 8;
+    file.seek(SeekFrom::Start(footer_length))?;
+    let mut buf = vec![0; 8];
+    file.read_exact(&mut buf)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -13,12 +23,6 @@ mod tests {
     use memmap2::MmapOptions;
 
     use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
 
     #[test]
     fn test_pod5() -> eyre::Result<()> {
