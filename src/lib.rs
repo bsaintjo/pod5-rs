@@ -1,25 +1,36 @@
-use std::{fs::File, io::{SeekFrom, Seek, Read}};
+mod footer_generated;
+
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+};
+
+use footer_generated::minknow::reads_format::Footer;
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
-fn read_footer(mut file: File) -> eyre::Result<()> {
+fn read_footer(mut file: File) -> eyre::Result<Vec<u8>> {
     let file_size = file.metadata()?.len();
     let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
     let footer_length = footer_length_end - 8;
     file.seek(SeekFrom::Start(footer_length))?;
-    let mut buf = vec![0; 8];
+    let mut buf = [0; 8];
     file.read_exact(&mut buf)?;
-    Ok(())
+    let flen = i64::from_le_bytes(buf);
+    file.seek(SeekFrom::Start(footer_length - (flen as u64)))?;
+    let mut buf = vec![0u8; flen as usize];
+    file.read_exact(&mut buf)?;
+    // let fb = flatbuffers::root::<Footer>(&buf)?;
+    // let mut data = file.
+    Ok(buf)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs::File,
-        io::Cursor,
-    };
+    use std::{fs::File, io::Cursor};
 
     use arrow2::io::ipc::read::read_file_metadata;
+    use flatbuffers::{root, FlatBufferBuilder};
     use memmap2::MmapOptions;
 
     use super::*;
@@ -44,6 +55,16 @@ mod tests {
         println!("file length\t\t\t{}", mmap.len());
         println!("end position of valid arrow\t{i:?}");
         println!("{m:#?}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_footer() -> eyre::Result<()> {
+        let path = "extra/multi_fast5_zip_v0.pod5";
+        let file = File::open(path)?;
+        let data = read_footer(file)?;
+        let footer = root::<Footer>(&data)?;
+        println!("{footer:?}");
         Ok(())
     }
 }
