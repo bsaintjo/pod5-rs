@@ -1,0 +1,13 @@
+[package]
+name = "pod5-rs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arrow2 = { version = "0.16.0", features = ["io_ipc"] }
+eyre = "0.6.8"
+flatbuffers = "23.1.21"
+memmap2 = "0.5.10"
+miette = "5.5.0"
