@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 arrow2 = { version = "0.16.0", features = ["io_ipc"] }
+arrow2_convert = "0.4.2"
 eyre = "0.6.8"
 flatbuffers = "23.1.21"
 memmap2 = "0.5.10"
