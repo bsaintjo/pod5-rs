@@ -8,10 +8,14 @@ edition = "2021"
 [dependencies]
 arrow2 = { version = "0.16.0", features = ["io_ipc"] }
 arrow2_convert = "0.4.2"
+delta-encoding = "0.4.0"
 eyre = "0.6.8"
 flatbuffers = "23.1.21"
 memmap2 = "0.5.10"
 miette = "5.5.0"
+stream-vbyte = "0.4.0"
+zigzag = "0.1.0"
+zstd = "0.12.3"
 
 [workspace]
 members = ["vbz-rs"]
