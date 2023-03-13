@@ -1,6 +1,7 @@
 use arrow2::datatypes::{Field, Schema};
 use arrow2_convert::{
-    deserialize::ArrowDeserialize, field::ArrowField, ArrowDeserialize, ArrowField, arrow_enable_vec_for_type,
+    arrow_enable_vec_for_type, deserialize::ArrowDeserialize, field::ArrowField, ArrowDeserialize,
+    ArrowField,
 };
 
 use std::{
@@ -95,7 +96,10 @@ use footer_generated::minknow::reads_format::Footer;
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
-fn check_signature<R>(mut reader: R) -> eyre::Result<bool> where R: Read + Seek {
+fn check_signature<R>(mut reader: R) -> eyre::Result<bool>
+where
+    R: Read + Seek,
+{
     let mut buf = [0u8; 8];
     reader.read_exact(&mut buf)?;
     Ok(buf == FILE_SIGNATURE)
@@ -117,7 +121,11 @@ fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::{Borrow, Cow}, fs::File, io::Cursor};
+    use std::{
+        borrow::{Borrow, Cow},
+        fs::File,
+        io::Cursor,
+    };
 
     use arrow2::{
         array::BinaryArray,
@@ -203,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn test_check_signature() -> eyre::Result<()>{
+    fn test_check_signature() -> eyre::Result<()> {
         let path = "extra/multi_fast5_zip_v0.pod5";
         let mut file = File::open(path)?;
         assert!(check_signature(&file)?);
