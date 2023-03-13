@@ -121,18 +121,11 @@ fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        borrow::{Borrow, Cow},
-        fs::File,
-        io::Cursor,
-    };
+    use std::{borrow::Cow, fs::File, io::Cursor};
 
-    use arrow2::{
-        array::BinaryArray,
-        io::ipc::read::{read_file_metadata, FileReader},
-    };
-    use arrow2_convert::{deserialize::TryIntoCollection, field::ArrowField};
-    use flatbuffers::{root, FlatBufferBuilder};
+    use arrow2::io::ipc::read::{read_file_metadata, FileReader};
+    use arrow2_convert::deserialize::TryIntoCollection;
+    use flatbuffers::root;
     use memmap2::MmapOptions;
 
     use crate::footer_generated::minknow::reads_format::Footer;
@@ -180,13 +173,13 @@ mod tests {
         let metadata = read_file_metadata(&mut signal_buf)?;
         // println!("from metadata: {:?}\n", metadata.schema);
         println!("from SignalRow: {:?}\n", SignalRow::schema());
-        let mut signal_table = FileReader::new(signal_buf, metadata, None, None);
+        let signal_table = FileReader::new(signal_buf, metadata, None, None);
 
         println!("from filereader: {:?}\n", signal_table.schema());
         for table in signal_table {
             if let Ok(chunk) = table {
                 let arr_iter = chunk.arrays();
-                let uuid: Cow<[SignalUuid]> = arr_iter[0].as_ref().try_into_collection()?;
+                let _uuid: Cow<[SignalUuid]> = arr_iter[0].as_ref().try_into_collection()?;
                 // let vbz: Vec<SignalVbz> = arr_iter.next().unwrap().try_into_collection()?;
                 // let samples: Vec<u32> = arr_iter.next().unwrap().try_into_collection()?;
                 // for arr in chunk.into_arrays().into_iter() {
