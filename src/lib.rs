@@ -38,7 +38,7 @@ impl ArrowDeserialize for SignalUuid {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SignalVbz(Vec<i16>);
+struct SignalVbz(Vec<u8>);
 
 impl ArrowField for SignalVbz {
     type Type = Self;
@@ -58,7 +58,22 @@ impl ArrowDeserialize for SignalVbz {
     fn arrow_deserialize(
         v: <&Self::ArrayType as IntoIterator>::Item,
     ) -> Option<<Self as ArrowField>::Type> {
-        v.map(|t| SignalVbz(t.iter().map(|&x| x as i16).collect()))
+        v.map(|t| SignalVbz(t.to_vec()))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ArrowDeserialize)]
+struct SignalUncompressed(Vec<i16>);
+
+impl ArrowField for SignalUncompressed {
+    type Type = Self;
+
+    fn data_type() -> arrow2::datatypes::DataType {
+        arrow2::datatypes::DataType::LargeList(Box::new(Field::new(
+            "signal",
+            arrow2::datatypes::DataType::Int16,
+            true,
+        )))
     }
 }
 
@@ -69,8 +84,11 @@ struct SignalRow {
     samples: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, ArrowField, ArrowDeserialize)]
-struct SignalRow2(Option<SignalUuid>, Option<SignalVbz>, Option<u32>);
+struct SignalRowRef<'a> {
+    read_id: &'a [Option<SignalUuid>],
+    signal: &'a [Option<SignalVbz>],
+    samples: &'a [Option<u32>],
+}
 
 impl SignalRow {
     fn schema() -> Schema {
@@ -172,16 +190,20 @@ mod tests {
         let mut signal_buf = Cursor::new(signal_buf);
         let metadata = read_file_metadata(&mut signal_buf)?;
         // println!("from metadata: {:?}\n", metadata.schema);
-        println!("from SignalRow: {:?}\n", SignalRow::schema());
+        // println!("from SignalRow: {:?}\n", SignalRow::schema());
         let signal_table = FileReader::new(signal_buf, metadata, None, None);
 
         println!("from filereader: {:?}\n", signal_table.schema());
         for table in signal_table {
             if let Ok(chunk) = table {
                 let arr_iter = chunk.arrays();
-                let _uuid: Cow<[SignalUuid]> = arr_iter[0].as_ref().try_into_collection()?;
-                // let vbz: Vec<SignalVbz> = arr_iter.next().unwrap().try_into_collection()?;
-                // let samples: Vec<u32> = arr_iter.next().unwrap().try_into_collection()?;
+                // let uuid: Vec<Option<SignalUuid>> = arr_iter[0].as_ref().try_into_collection()?;
+                let vbz: Vec<Option<SignalVbz>> = arr_iter[1].as_ref().try_into_collection()?;
+                let samples: Vec<Option<u32>> = arr_iter[2].as_ref().try_into_collection()?;
+                let data: &[u8] = vbz[0].as_ref().unwrap().0.as_ref();
+                let count = samples[0].unwrap();
+                let decoded = svb::decode(data, count)?;
+                // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz, samples: &samples };
                 // for arr in chunk.into_arrays().into_iter() {
                 //     let row: Vec<SignalRow> = arr.try_into_collection()?;
                 // }
