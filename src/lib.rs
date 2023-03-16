@@ -9,7 +9,10 @@ use std::{
     io::{Read, Seek, SeekFrom},
 };
 
+mod error;
+mod footer;
 mod footer_generated;
+mod reader;
 mod svb;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,15 +102,6 @@ impl SignalRow {
 
 arrow_enable_vec_for_type!(SignalUuid);
 arrow_enable_vec_for_type!(SignalVbz);
-struct ParsedFooter {
-    data: Vec<u8>,
-}
-
-impl ParsedFooter {
-    fn footer(&self) -> eyre::Result<Footer<'_>> {
-        Ok(root::<Footer>(&self.data)?)
-    }
-}
 
 use flatbuffers::root;
 use footer_generated::minknow::reads_format::Footer;
@@ -139,7 +133,7 @@ fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::Cow, fs::File, io::Cursor};
+    use std::{fs::File, io::Cursor};
 
     use arrow2::io::ipc::read::{read_file_metadata, FileReader};
     use arrow2_convert::deserialize::TryIntoCollection;
@@ -174,6 +168,16 @@ mod tests {
     }
 
     #[test]
+    fn test_read_footer2() -> eyre::Result<()> {
+        let path = "extra/multi_fast5_zip_v3.pod5";
+        let file = File::open(path)?;
+        let data = read_footer(&file)?;
+        let footer = root::<Footer>(&data)?;
+        println!("{footer:?}");
+        Ok(())
+    }
+
+    #[test]
     fn test_read_footer() -> eyre::Result<()> {
         let path = "extra/multi_fast5_zip_v0.pod5";
         let mut file = File::open(path)?;
@@ -203,6 +207,7 @@ mod tests {
                 let data: &[u8] = vbz[0].as_ref().unwrap().0.as_ref();
                 let count = samples[0].unwrap();
                 let decoded = svb::decode(data, count)?;
+                println!("decoded: {decoded:?}");
                 // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz, samples: &samples };
                 // for arr in chunk.into_arrays().into_iter() {
                 //     let row: Vec<SignalRow> = arr.try_into_collection()?;

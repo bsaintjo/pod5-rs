@@ -1,10 +1,3 @@
-use std::io::Read;
-
-use delta_encoding::DeltaDecoderExt;
-use stream_vbyte::scalar::Scalar;
-use zigzag::ZigZag;
-use zstd::{decode_all, zstd_safe};
-
 fn zigzag_decode(val: u16) -> u16 {
     (val >> 1) ^ (0_u16.wrapping_sub(val & 1))
 }
@@ -60,10 +53,11 @@ fn decode_scalar(input: &[u8], count: u32) -> eyre::Result<Vec<i16>> {
 
 pub(crate) fn decode(source: &[u8], count: u32) -> eyre::Result<Vec<i16>>
 {
-    let Some(size) = zstd_safe::get_frame_content_size(source).unwrap() else { return Err(eyre::eyre!("Frame doesn't contain content size")) };
-    println!("frame content size: {size}");
-    let mut zstd_decoded = vec![0; size as usize];
-    zstd_safe::decompress(&mut zstd_decoded, source).unwrap();
+    // let Some(size) = zstd_safe::get_frame_content_size(source).unwrap() else { return Err(eyre::eyre!("Frame doesn't contain content size")) };
+    // println!("frame content size: {size}");
+    // let mut zstd_decoded = vec![0; size as usize];
+    let zstd_decoded = zstd::decode_all(source)?;
+    // zstd_safe::decompress(&mut zstd_decoded, source).unwrap();
     decode_scalar(&zstd_decoded, count)
     // let mut svb_decoded = vec![0; count as usize];
     // let _svb_decoded_count =
