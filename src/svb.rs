@@ -1,5 +1,5 @@
 use delta_encoding::DeltaDecoderExt;
-use stream_vbyte::{decode::{DecodeSingleSink, cursor::DecodeCursor, Decoder}, decode_quad_scalar, scalar};
+use stream_vbyte::{decode::{DecodeSingleSink, cursor::DecodeCursor, Decoder}, decode_quad_scalar, scalar::{self, Scalar}};
 use zigzag::ZigZag;
 
 fn zigzag_decode(val: u16) -> u16 {
@@ -57,6 +57,12 @@ fn decode_scalar(input: &[u8], count: u32) -> eyre::Result<Vec<i16>> {
 
 struct Sink(Vec<u16>);
 
+impl Sink {
+    fn new(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
+    }
+}
+
 impl DecodeSingleSink for Sink {
     fn on_number(&mut self, num: u32, _nums_decoded: usize) {
         self.0.push(num as u16)
@@ -67,10 +73,19 @@ decode_quad_scalar!(Sink);
 
 fn decode_svb(data: &[u8], count: u32) -> Vec<u16>{
     let data_idx = key_length(count);
-    let control_bytes = data;
+    println!("data_idx: {data_idx}");
+    let diff_count = data.len() - data_idx as usize;
+    println!("diff count: {diff_count}");
+    let control_bytes = &data[..data_idx as usize];
     let encoded_nums = &data[data_idx as usize..];
-    let mut sink = Sink(Vec::new());
-    let _ = scalar::Scalar::decode_quads(control_bytes, encoded_nums, data_idx as usize, 0, &mut sink);
+    let mut cursor = DecodeCursor::new(data, count as usize - 1);
+    let mut sink = Sink::new(count as usize);
+    let mut output =vec![0; count as usize - 1];
+    // let (num_decoded, bytes_read) = scalar::Scalar::decode_quads(control_bytes, encoded_nums, data_idx as usize, 0, &mut sink);
+    // let num_decoded = cursor.decode_sink(&mut sink, count as usize - 2);
+    let num_decoded = cursor.decode_slice::<Scalar>(&mut output);
+    println!("num decoded {num_decoded}");
+    println!("count: {count}");
     sink.0
 }
 
@@ -84,6 +99,7 @@ pub(crate) fn decode(source: &[u8], count: u32) -> eyre::Result<Vec<i16>>
     // println!("frame content size: {size}");
     // let mut zstd_decoded = vec![0; size as usize];
     let zstd_decoded = zstd::decode_all(source)?;
+    println!("zstd len: {}", zstd_decoded.len());
     // zstd_safe::decompress(&mut zstd_decoded, source).unwrap();
     let svb_decoded = decode_svb(&zstd_decoded, count);
     let delta_zigzag_decoded: Vec<i16> = svb_decoded.into_iter().map(ZigZag::decode).original().collect();

@@ -203,13 +203,16 @@ mod tests {
                 let arr_iter = chunk.arrays();
                 // let uuid: Vec<Option<SignalUuid>> = arr_iter[0].as_ref().try_into_collection()?;
                 let vbz: Vec<Option<SignalVbz>> = arr_iter[1].as_ref().try_into_collection()?;
+                println!("vbz lens {:?}", vbz.iter().map(|x| x.as_ref().map(|y| y.0.len())).collect::<Vec<_>>());
                 let samples: Vec<Option<u32>> = arr_iter[2].as_ref().try_into_collection()?;
+                println!("samples {samples:?}");
                 let data: &[u8] = vbz[0].as_ref().unwrap().0.as_ref();
                 let rest: &[u8] = vbz[1].as_ref().unwrap().0.as_ref();
+                println!("num bytes total: {}", data.len());
                 let count = samples[0].unwrap();
                 let count = count + samples[1].unwrap();
                 let decoded = svb::decode(data, count)?;
-                println!("decoded: {decoded:?}");
+                // println!("decoded: {decoded:?}");
                 // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz, samples: &samples };
                 // for arr in chunk.into_arrays().into_iter() {
                 //     let row: Vec<SignalRow> = arr.try_into_collection()?;
