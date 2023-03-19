@@ -205,7 +205,9 @@ mod tests {
                 let vbz: Vec<Option<SignalVbz>> = arr_iter[1].as_ref().try_into_collection()?;
                 let samples: Vec<Option<u32>> = arr_iter[2].as_ref().try_into_collection()?;
                 let data: &[u8] = vbz[0].as_ref().unwrap().0.as_ref();
+                let rest: &[u8] = vbz[1].as_ref().unwrap().0.as_ref();
                 let count = samples[0].unwrap();
+                let count = count + samples[1].unwrap();
                 let decoded = svb::decode(data, count)?;
                 println!("decoded: {decoded:?}");
                 // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz, samples: &samples };
