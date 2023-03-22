@@ -13,7 +13,6 @@ mod error;
 mod footer;
 mod footer_generated;
 mod reader;
-mod svb;
 mod svb16;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,15 +225,17 @@ mod tests {
                 let samples: Vec<Option<u32>> = arr_iter[2].as_ref().try_into_collection()?;
                 println!("samples {samples:?}");
                 let data: &[u8] = vbz[0].as_ref().unwrap().0.as_ref();
-                let rest: &[u8] = vbz[1].as_ref().unwrap().0.as_ref();
-                let mut total_data = data.to_vec();
-                total_data.extend_from_slice(rest);
-                let total_data = Cursor::new(total_data);
-                let res = zstd::decode_all(total_data).unwrap();
-                println!("combined zstd decoded len {}", res.len());
-                let count = samples[0].unwrap();
+                // let rest: &[u8] = vbz[1].as_ref().unwrap().0.as_ref();
+                // let mut total_data = data.to_vec();
+                // total_data.extend_from_slice(rest);
+                // let total_data = Cursor::new(total_data);
+                // let res = zstd::decode_all(total_data).unwrap();
+                // println!("combined zstd decoded len {}", res.len());
+                let count = samples[0].unwrap() as usize;
                 println!("count: {count}");
-                let _decoded = svb::decode(data, count)?;
+                // let _decoded = svb::decode(data, count)?;
+                let decoded = svb16::decode(data, count).unwrap();
+                println!("decoded len: {}", decoded.len());
                 // println!("decoded: {decoded:?}");
                 // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz, samples: &samples };
                 // for arr in chunk.into_arrays().into_iter() {
