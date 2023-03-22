@@ -8,9 +8,11 @@ edition = "2021"
 [dependencies]
 arrow2 = { version = "0.16.0", features = ["io_ipc"] }
 arrow2_convert = "0.4.2"
+bitvec = "1.0.1"
 delta-encoding = "0.4.0"
 eyre = "0.6.8"
 flatbuffers = "23.1.21"
+itertools = "0.10.5"
 memmap2 = "0.5.10"
 miette = "5.5.0"
 stream-vbyte = "0.4.0"

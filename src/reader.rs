@@ -52,7 +52,7 @@ impl Reader {
         if valid_signature(&file)? {
             return Err(Pod5Error::SignatureFailure);
         }
-        let footer = ParsedFooter::read_footer(&file)?;
+        let _footer = ParsedFooter::read_footer(&file)?;
         todo!()
     }
 
@@ -96,7 +96,7 @@ mod test {
     #[test]
     fn test_reader() -> eyre::Result<()> {
         let reader = Reader::from_path("extra/multi_fast5_zip_v0.pod5")?;
-        for read in reader.reads() {
+        for _read in reader.reads() {
             todo!()
         }
         Ok(())

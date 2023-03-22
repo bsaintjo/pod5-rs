@@ -2,7 +2,6 @@ use std::io;
 
 use flatbuffers::InvalidFlatbuffer;
 
-
 #[derive(Debug, thiserror::Error)]
 pub enum Pod5Error {
     #[error("Failed to parse footer, {0}")]

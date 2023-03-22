@@ -14,6 +14,7 @@ mod footer;
 mod footer_generated;
 mod reader;
 mod svb;
+mod svb16;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SignalUuid(Vec<u8>);
@@ -103,9 +104,6 @@ impl SignalRow {
 arrow_enable_vec_for_type!(SignalUuid);
 arrow_enable_vec_for_type!(SignalVbz);
 
-use flatbuffers::root;
-use footer_generated::minknow::reads_format::Footer;
-
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
 fn check_signature<R>(mut reader: R) -> eyre::Result<bool>
@@ -133,6 +131,7 @@ fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
+
     use std::{fs::File, io::Cursor};
 
     use arrow2::io::ipc::read::{read_file_metadata, FileReader};
@@ -179,15 +178,17 @@ mod tests {
 
     #[test]
     fn test_read_footer() -> eyre::Result<()> {
-        let path = "extra/multi_fast5_zip_v0.pod5";
+        let path = "extra/multi_fast5_zip_v3.pod5";
         let mut file = File::open(path)?;
         let data = read_footer(&file)?;
         let footer = root::<Footer>(&data)?;
+        println!("footer: {footer:?}");
         let embedded = footer.contents().unwrap();
         let efile = embedded.get(0);
         let offset = efile.offset() as u64;
         let length = efile.length() as u64;
-        let mut signal_buf = vec![0u8; length as usize];
+        let mut signal_buf = Vec::new();
+        signal_buf.resize(length as usize, 0x0);
         file.seek(SeekFrom::Start(offset))?;
         file.read_exact(&mut signal_buf)?;
 
@@ -196,22 +197,44 @@ mod tests {
         // println!("from metadata: {:?}\n", metadata.schema);
         // println!("from SignalRow: {:?}\n", SignalRow::schema());
         let signal_table = FileReader::new(signal_buf, metadata, None, None);
+        println!("from signal table: {:?}\n", signal_table.schema());
 
-        println!("from filereader: {:?}\n", signal_table.schema());
+        let read_efile = embedded.get(2);
+        let offset = read_efile.offset() as u64;
+        let length = read_efile.length() as u64;
+        let mut read_buf = Vec::new();
+        read_buf.resize(length as usize, 0x0);
+        file.seek(SeekFrom::Start(offset))?;
+        file.read_exact(&mut read_buf)?;
+        // let mut read_buf = Cursor::new(read_buf);
+
+        // let metadata = read_file_metadata(&mut read_buf)?;
+        // let mut read_table = FileReader::new(read_buf, metadata, None, None);
+        // println!("from read table: {:?}\n", read_table.schema());
+        // let chunk = read_table.next().unwrap().unwrap();
+        // let arrs = chunk.arrays();
+        // let num_samples_arr = arrs[12].as_ref();
+        // println!("num samples {:?}", num_samples_arr.data_type());
+        // let num_samples: Vec<u64> = num_samples_arr.try_into_collection()?;
+        // println!("num samples {:?}", num_samples);
+
         for table in signal_table {
             if let Ok(chunk) = table {
                 let arr_iter = chunk.arrays();
                 // let uuid: Vec<Option<SignalUuid>> = arr_iter[0].as_ref().try_into_collection()?;
                 let vbz: Vec<Option<SignalVbz>> = arr_iter[1].as_ref().try_into_collection()?;
-                println!("vbz lens {:?}", vbz.iter().map(|x| x.as_ref().map(|y| y.0.len())).collect::<Vec<_>>());
                 let samples: Vec<Option<u32>> = arr_iter[2].as_ref().try_into_collection()?;
                 println!("samples {samples:?}");
                 let data: &[u8] = vbz[0].as_ref().unwrap().0.as_ref();
                 let rest: &[u8] = vbz[1].as_ref().unwrap().0.as_ref();
-                println!("num bytes total: {}", data.len());
+                let mut total_data = data.to_vec();
+                total_data.extend_from_slice(rest);
+                let total_data = Cursor::new(total_data);
+                let res = zstd::decode_all(total_data).unwrap();
+                println!("combined zstd decoded len {}", res.len());
                 let count = samples[0].unwrap();
-                let count = count + samples[1].unwrap();
-                let decoded = svb::decode(data, count)?;
+                println!("count: {count}");
+                let _decoded = svb::decode(data, count)?;
                 // println!("decoded: {decoded:?}");
                 // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz, samples: &samples };
                 // for arr in chunk.into_arrays().into_iter() {

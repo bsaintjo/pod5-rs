@@ -37,14 +37,14 @@ impl ParsedFooter {
     }
 
     fn read_table(&self) -> Result<Option<EmbeddedReadTable>, Pod5Error> {
-        Ok(self.find_table(ContentType::ReadsTable)?.map(EmbeddedReadTable))
+        Ok(self
+            .find_table(ContentType::ReadsTable)?
+            .map(EmbeddedReadTable))
     }
 
     fn signal_table(&self) -> Result<Option<EmbeddedFile>, Pod5Error> {
         todo!()
     }
-
-
 
     pub fn read_footer(mut file: &File) -> Result<Self, Pod5Error> {
         file.rewind()?;
@@ -64,7 +64,6 @@ impl ParsedFooter {
 
 #[cfg(test)]
 mod test {
-    use arrow2::io::ipc::read::read_file_metadata;
 
     use crate::reader::read_embedded_arrow;
 
@@ -76,7 +75,7 @@ mod test {
         let file = File::open(path)?;
         let footer = ParsedFooter::read_footer(&file)?;
         let read_table = footer.read_table()?.unwrap();
-        let mut reader = read_embedded_arrow(&file, &read_table.0)?;
+        let reader = read_embedded_arrow(&file, &read_table.0)?;
         println!("{:?}\n", reader.schema());
 
         // let chunk = reader.next().unwrap();
