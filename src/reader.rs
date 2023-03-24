@@ -7,7 +7,7 @@ use std::{
 use arrow2::io::ipc::read::{read_file_metadata, FileReader};
 
 use crate::{
-    error::Pod5Error, footer::ParsedFooter, footer_generated::minknow::reads_format::EmbeddedFile,
+    error::Pod5Error, footer::{ParsedFooter, SignalTable, ReadTable}, footer_generated::minknow::reads_format::EmbeddedFile,
 };
 
 pub(crate) fn read_embedded_arrow(
@@ -37,7 +37,13 @@ where
     Ok(buf == FILE_SIGNATURE)
 }
 
-struct Reader;
+struct Reader {
+    file: File,
+    footer: ParsedFooter,
+    read_table_idx: Option<ReadTable>,
+    signal_table_idx: Option<SignalTable>,
+    run_info_table_idx: Option<usize>,
+}
 
 impl Reader {
     fn from_path<P>(path: P) -> Result<Self, Pod5Error>
@@ -52,7 +58,8 @@ impl Reader {
         if valid_signature(&file)? {
             return Err(Pod5Error::SignatureFailure);
         }
-        let _footer = ParsedFooter::read_footer(&file)?;
+        let footer = ParsedFooter::read_footer(&file)?;
+        let signal_table_idx = footer.read_table()?;
         todo!()
     }
 
