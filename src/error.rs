@@ -15,4 +15,13 @@ pub enum Pod5Error {
 
     #[error("Missing list of embedded files from footer, footer is likely improperly constructed or pod5 is empty")]
     ContentsMissing,
+
+    #[error("Missing Signal table from POD5")]
+    SignalTableMissing,
+
+    #[error("Missing Read table from POD5")]
+    ReadTableMissing,
+
+    #[error("Missing Run Info table from POD5")]
+    RunInfoTable,
 }

@@ -32,7 +32,7 @@ impl ParsedFooter {
         Ok(root::<Footer>(&self.data)?)
     }
 
-    fn find_table(&self, content_type: ContentType) -> Result<Option<Table>, Pod5Error> {
+    fn find_table(&self, content_type: ContentType, err: Pod5Error) -> Result<Table, Pod5Error> {
         let footer = self.footer()?;
         let contents = footer.contents().ok_or(Pod5Error::ContentsMissing)?;
         let mut efile = None;
@@ -42,18 +42,26 @@ impl ParsedFooter {
                 break;
             }
         }
-        Ok(efile.map(|e| Table {
-            offset: e.offset() as usize,
-            length: e.length() as usize,
-        }))
+        let efile = efile.ok_or(err)?;
+
+        Ok(Table {
+            offset: efile.offset() as usize,
+            length: efile.length() as usize,
+        })
     }
 
-    pub fn read_table(&self) -> Result<Option<ReadTable>, Pod5Error> {
-        Ok(self.find_table(ContentType::ReadsTable)?.map(ReadTable))
+    pub fn read_table(&self) -> Result<ReadTable, Pod5Error> {
+        Ok(ReadTable(self.find_table(
+            ContentType::ReadsTable,
+            Pod5Error::ReadTableMissing,
+        )?))
     }
 
-    pub fn signal_table(&self) -> Result<Option<SignalTable>, Pod5Error> {
-        Ok(self.find_table(ContentType::SignalTable)?.map(SignalTable))
+    pub fn signal_table(&self) -> Result<SignalTable, Pod5Error> {
+        Ok(SignalTable(self.find_table(
+            ContentType::SignalTable,
+            Pod5Error::SignalTableMissing,
+        )?))
     }
 
     pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, Pod5Error> {
@@ -76,8 +84,6 @@ impl ParsedFooter {
 #[cfg(test)]
 mod test {
 
-    use crate::reader::read_embedded_arrow;
-
     use super::*;
 
     #[test]
@@ -85,7 +91,7 @@ mod test {
         let path = "extra/multi_fast5_zip_v3.pod5";
         let file = File::open(path)?;
         let footer = ParsedFooter::read_footer(&file)?;
-        let read_table = footer.read_table()?.unwrap();
+        let read_table = footer.read_table()?;
         // let reader = read_embedded_arrow(&file, &read_table.0)?;
         // println!("{:?}\n", reader.schema());
 

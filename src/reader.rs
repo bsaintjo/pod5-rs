@@ -63,7 +63,8 @@ where
             return Err(Pod5Error::SignatureFailure);
         }
         let footer = ParsedFooter::read_footer(&mut reader)?;
-        let signal_table_idx = footer.read_table()?;
+        let signal_table_idx = footer.signal_table()?;
+        let read_table = footer.read_table()?;
         todo!()
     }
 
