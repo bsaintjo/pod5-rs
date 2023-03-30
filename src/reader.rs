@@ -7,13 +7,18 @@ use std::{
 use arrow2::io::ipc::read::{read_file_metadata, FileReader};
 
 use crate::{
-    error::Pod5Error, footer::{ParsedFooter, SignalTable, ReadTable}, footer_generated::minknow::reads_format::EmbeddedFile,
+    error::Pod5Error,
+    footer::{ParsedFooter, ReadTable, SignalTable},
+    footer_generated::minknow::reads_format::EmbeddedFile, run_info::RunInfo,
 };
 
-pub(crate) fn read_embedded_arrow(
-    mut file: &File,
+pub(crate) fn read_embedded_arrow<R>(
+    mut file: R,
     efile: &EmbeddedFile,
-) -> eyre::Result<FileReader<Cursor<Vec<u8>>>> {
+) -> eyre::Result<FileReader<Cursor<Vec<u8>>>>
+where
+    R: Read + Seek,
+{
     let offset = efile.offset() as u64;
     let length = efile.length() as u64;
     let mut embedded_arrow = vec![0u8; length as usize];
@@ -37,28 +42,27 @@ where
     Ok(buf == FILE_SIGNATURE)
 }
 
-struct Reader {
-    file: File,
+struct Reader<R> {
+    file: R,
     footer: ParsedFooter,
     read_table_idx: Option<ReadTable>,
     signal_table_idx: Option<SignalTable>,
     run_info_table_idx: Option<usize>,
 }
 
-impl Reader {
-    fn from_path<P>(path: P) -> Result<Self, Pod5Error>
-    where
-        P: AsRef<Path>,
-    {
-        let mut file = File::open(path)?;
-        if !valid_signature(&file)? {
+impl<R> Reader<R>
+where
+    R: Read + Seek,
+{
+    fn from_reader(mut reader: R) -> Result<Self, Pod5Error> {
+        if !valid_signature(&mut reader)? {
             return Err(Pod5Error::SignatureFailure);
         }
-        file.seek(SeekFrom::End(-8))?;
-        if valid_signature(&file)? {
+        reader.seek(SeekFrom::End(-8))?;
+        if valid_signature(&mut reader)? {
             return Err(Pod5Error::SignatureFailure);
         }
-        let footer = ParsedFooter::read_footer(&file)?;
+        let footer = ParsedFooter::read_footer(&mut reader)?;
         let signal_table_idx = footer.read_table()?;
         todo!()
     }
@@ -94,15 +98,14 @@ impl Pod5Read {
     }
 }
 
-struct RunInfo;
-
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
-        let reader = Reader::from_path("extra/multi_fast5_zip_v0.pod5")?;
+        let file = File::open("extra/multi_fast5_zip_v0.pod5")?;
+        let reader = Reader::from_reader(file)?;
         for _read in reader.reads() {
             todo!()
         }

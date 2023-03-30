@@ -1,3 +1,4 @@
+// #![feature(seek_stream_len)]
 use arrow2::datatypes::{Field, Schema};
 use arrow2_convert::{
     arrow_enable_vec_for_type, deserialize::ArrowDeserialize, field::ArrowField, ArrowDeserialize,
@@ -14,6 +15,7 @@ mod footer;
 mod footer_generated;
 mod reader;
 mod svb16;
+mod run_info;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SignalUuid(Vec<u8>);

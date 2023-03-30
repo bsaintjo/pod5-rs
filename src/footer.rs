@@ -14,7 +14,7 @@ use crate::{
 #[derive(Debug)]
 struct Table {
     offset: usize,
-    length: usize
+    length: usize,
 }
 
 #[derive(Debug)]
@@ -42,31 +42,33 @@ impl ParsedFooter {
                 break;
             }
         }
-        Ok(efile.map(|e| Table { offset: e.offset() as usize, length: e.length() as usize }))
+        Ok(efile.map(|e| Table {
+            offset: e.offset() as usize,
+            length: e.length() as usize,
+        }))
     }
 
     pub fn read_table(&self) -> Result<Option<ReadTable>, Pod5Error> {
-        Ok(self
-            .find_table(ContentType::ReadsTable)?
-            .map(ReadTable))
+        Ok(self.find_table(ContentType::ReadsTable)?.map(ReadTable))
     }
 
     pub fn signal_table(&self) -> Result<Option<SignalTable>, Pod5Error> {
         Ok(self.find_table(ContentType::SignalTable)?.map(SignalTable))
     }
 
-    pub fn read_footer(mut file: &File) -> Result<Self, Pod5Error> {
-        file.rewind()?;
-        let file_size = file.metadata()?.len();
-        let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
-        let footer_length = footer_length_end - 8;
-        file.seek(SeekFrom::Start(footer_length))?;
+    pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, Pod5Error> {
+        reader.rewind()?;
+        // let file_size = reader.stream_len()?;
+        // let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
+        // let footer_length = footer_length_end - 8;
+        let footer_length = -(FILE_SIGNATURE.len() as i64) + (-16) + (-8);
+        reader.seek(SeekFrom::End(footer_length))?;
         let mut buf = [0; 8];
-        file.read_exact(&mut buf)?;
+        reader.read_exact(&mut buf)?;
         let flen = i64::from_le_bytes(buf);
-        file.seek(SeekFrom::Start(footer_length - (flen as u64)))?;
+        reader.seek(SeekFrom::End(footer_length - flen))?;
         let mut buf = vec![0u8; flen as usize];
-        file.read_exact(&mut buf)?;
+        reader.read_exact(&mut buf)?;
         Ok(Self { data: buf })
     }
 }

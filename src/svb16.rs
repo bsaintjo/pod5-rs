@@ -71,6 +71,8 @@ pub fn decode(compressed: &[u8], count: usize) -> io::Result<Vec<i16>> {
         .collect())
 }
 
+// TODO We can know exactly how many ctrl bytes are needed and max number of data bytes needed
+// Use Vec::with_capacaity to avoid multiplie allocations
 struct Encoder<I> {
     ctrl_bytes: Vec<u8>,
     data_bytes: Vec<u8>,
