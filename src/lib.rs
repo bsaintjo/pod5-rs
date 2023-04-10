@@ -16,6 +16,7 @@ mod footer_generated;
 mod reader;
 mod svb16;
 mod run_info;
+mod read_table;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SignalUuid(Vec<u8>);

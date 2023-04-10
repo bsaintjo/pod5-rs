@@ -7,8 +7,8 @@ pub enum Pod5Error {
     #[error("Failed to parse footer, {0}")]
     FooterParserFailure(#[from] InvalidFlatbuffer),
 
-    #[error("Failed to verify signature")]
-    SignatureFailure,
+    #[error("Failed to verify signature: {0}")]
+    SignatureFailure(&'static str),
 
     #[error("{0}")]
     IOError(#[from] io::Error),

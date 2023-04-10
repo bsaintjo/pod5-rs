@@ -8,19 +8,20 @@ use arrow2::io::ipc::read::{read_file_metadata, FileReader};
 
 use crate::{
     error::Pod5Error,
-    footer::{ParsedFooter, ReadTable, SignalTable},
-    footer_generated::minknow::reads_format::EmbeddedFile, run_info::RunInfo,
+    footer::{ParsedFooter, ReadTable, SignalTable, Table},
+    run_info::RunInfoTable, read_table::SignalIdxs,
 };
 
-pub(crate) fn read_embedded_arrow<R>(
+pub(crate) fn read_embedded_arrow<R, T>(
     mut file: R,
-    efile: &EmbeddedFile,
+    efile: T,
 ) -> eyre::Result<FileReader<Cursor<Vec<u8>>>>
 where
     R: Read + Seek,
+    T: AsRef<Table>,
 {
-    let offset = efile.offset() as u64;
-    let length = efile.length() as u64;
+    let offset = efile.as_ref().offset() as u64;
+    let length = efile.as_ref().length() as u64;
     let mut embedded_arrow = vec![0u8; length as usize];
     file.seek(SeekFrom::Start(offset))?;
     file.read_exact(&mut embedded_arrow)?;
@@ -42,30 +43,40 @@ where
     Ok(buf == FILE_SIGNATURE)
 }
 
-struct Reader<R> {
-    file: R,
-    footer: ParsedFooter,
-    read_table_idx: Option<ReadTable>,
-    signal_table_idx: Option<SignalTable>,
-    run_info_table_idx: Option<usize>,
+pub(crate) struct Reader<R> {
+    pub(crate) reader: R,
+    pub(crate) footer: ParsedFooter,
+    pub(crate) read_table: ReadTable,
+    pub(crate) signal_table: SignalTable,
+    pub(crate) run_info_table: RunInfoTable,
 }
+
+// Maybe more useful for mmap related stuff
+impl<'a, R> Reader<R> where R: AsRef<&'a [u8]> {}
 
 impl<R> Reader<R>
 where
     R: Read + Seek,
 {
-    fn from_reader(mut reader: R) -> Result<Self, Pod5Error> {
+    pub(crate) fn from_reader(mut reader: R) -> Result<Self, Pod5Error> {
         if !valid_signature(&mut reader)? {
-            return Err(Pod5Error::SignatureFailure);
+            return Err(Pod5Error::SignatureFailure("Start"));
         }
         reader.seek(SeekFrom::End(-8))?;
-        if valid_signature(&mut reader)? {
-            return Err(Pod5Error::SignatureFailure);
+        if !valid_signature(&mut reader)? {
+            return Err(Pod5Error::SignatureFailure("End"));
         }
         let footer = ParsedFooter::read_footer(&mut reader)?;
-        let signal_table_idx = footer.signal_table()?;
+        let signal_table = footer.signal_table()?;
         let read_table = footer.read_table()?;
-        todo!()
+        let run_info_table = footer.run_info_table()?;
+        Ok(Self {
+            reader,
+            footer,
+            read_table,
+            signal_table,
+            run_info_table,
+        })
     }
 
     fn reads(&self) -> ReadIter {
@@ -73,7 +84,10 @@ where
     }
 }
 
-struct ReadIter;
+
+struct ReadIter {
+    idxs: SignalIdxs,
+}
 
 impl Iterator for ReadIter {
     type Item = Pod5Read;
@@ -94,7 +108,7 @@ impl Pod5Read {
         todo!()
     }
 
-    fn run_info(&self) -> Option<RunInfo> {
+    fn run_info(&self) -> Option<RunInfoTable> {
         todo!()
     }
 }
@@ -105,11 +119,13 @@ mod test {
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
-        let file = File::open("extra/multi_fast5_zip_v0.pod5")?;
-        let reader = Reader::from_reader(file)?;
-        for _read in reader.reads() {
-            todo!()
-        }
+        let file = File::open("extra/multi_fast5_zip_v3.pod5")?;
+        let mut reader = Reader::from_reader(file)?;
+        let embedded_file = read_embedded_arrow(&mut reader.reader, reader.read_table)?;
+        println!("{:?}", embedded_file.schema());
+        // for _read in reader.reads() {
+        //     todo!()
+        // }
         Ok(())
     }
 }

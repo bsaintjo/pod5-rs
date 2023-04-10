@@ -1,27 +1,47 @@
-use std::{
-    fs::File,
-    io::{Read, Seek, SeekFrom},
-};
+use std::io::{Read, Seek, SeekFrom};
 
 use flatbuffers::root;
 
 use crate::{
     error::Pod5Error,
     footer_generated::minknow::reads_format::{ContentType, Footer},
-    FILE_SIGNATURE,
+    FILE_SIGNATURE, run_info::RunInfoTable,
 };
 
 #[derive(Debug)]
-struct Table {
+pub(crate) struct Table {
     offset: usize,
     length: usize,
+}
+
+impl Table {
+    pub(crate) fn offset(&self) -> usize {
+        self.offset
+    }
+
+    pub(crate) fn length(&self) -> usize {
+        self.length
+    }
 }
 
 #[derive(Debug)]
 pub struct ReadTable(Table);
 
+impl AsRef<Table> for ReadTable {
+    fn as_ref(&self) -> &Table {
+        &self.0
+    }
+}
+
 #[derive(Debug)]
 pub struct SignalTable(Table);
+
+impl AsRef<Table> for SignalTable {
+    fn as_ref(&self) -> &Table {
+        &self.0
+    }
+}
+
 
 pub struct ParsedFooter {
     data: Vec<u8>,
@@ -79,10 +99,19 @@ impl ParsedFooter {
         reader.read_exact(&mut buf)?;
         Ok(Self { data: buf })
     }
+
+    pub(crate) fn run_info_table(&self) -> Result<RunInfoTable, Pod5Error> {
+        Ok(RunInfoTable(self.find_table(
+            ContentType::RunInfoTable,
+            Pod5Error::RunInfoTable,
+        )?))
+    }
 }
 
 #[cfg(test)]
 mod test {
+
+    use std::fs::File;
 
     use super::*;
 
