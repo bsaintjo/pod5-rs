@@ -26,6 +26,8 @@ flatbuffers = "23.1.21"
 eyre = "0.6.8"
 miette = "5.5.0"
 thiserror = "1.0.39"
+polars-arrow = { version = "0.37.0", features = ["io_ipc", "compute_cast"] }
+polars = { version = "0.37.0", features = ["dtype-full", "dtype-array"] }
 
 
 [dev-dependencies]

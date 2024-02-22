@@ -13,10 +13,10 @@ use std::{
 mod error;
 mod footer;
 mod footer_generated;
-mod reader;
-mod svb16;
-mod run_info;
 mod read_table;
+mod reader;
+mod run_info;
+mod svb16;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SignalUuid(Vec<u8>);
@@ -134,12 +134,14 @@ fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
 
-    use std::{fs::File, io::Cursor};
+    use polars_arrow::{array::BinaryArray, compute::cast::fixed_size_binary_binary};
+use std::{any::type_name_of_val, fs::File, io::Cursor};
 
     use arrow2::io::ipc::read::{read_file_metadata, FileReader};
     use arrow2_convert::deserialize::TryIntoCollection;
     use flatbuffers::root;
     use memmap2::MmapOptions;
+    use polars_arrow::{array::FixedSizeBinaryArray, datatypes::ArrowDataType};
 
     use crate::footer_generated::minknow::reads_format::Footer;
 
@@ -175,6 +177,80 @@ mod tests {
         let data = read_footer(&file)?;
         let footer = root::<Footer>(&data)?;
         println!("{footer:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_footer_polars() -> eyre::Result<()> {
+        let path = "extra/multi_fast5_zip_v3.pod5";
+        let mut file = File::open(path)?;
+        let data = read_footer(&file)?;
+        let footer = root::<Footer>(&data)?;
+        println!("footer: {footer:?}");
+        let embedded = footer.contents().unwrap();
+        let efile = embedded.get(0);
+        let offset = efile.offset() as u64;
+        let length = efile.length() as u64;
+        let mut signal_buf = Vec::new();
+        signal_buf.resize(length as usize, 0x0);
+        file.seek(SeekFrom::Start(offset))?;
+        file.read_exact(&mut signal_buf)?;
+
+        let mut signal_buf = Cursor::new(signal_buf);
+        let metadata = polars_arrow::io::ipc::read::read_file_metadata(&mut signal_buf)?;
+        let dts: Vec<(String, ArrowDataType)> = metadata
+            .schema
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.data_type.to_logical_type().clone()))
+            .collect::<Vec<_>>();
+        println!("metadata schema: {:?}", &metadata.schema);
+        println!("metadata ipc schema: {:?}", &metadata.ipc_schema);
+
+        // println!("from metadata: {:?}\n", metadata.schema);
+        // println!("from SignalRow: {:?}\n", SignalRow::schema());
+        let signal_table =
+            polars_arrow::io::ipc::read::FileReader::new(signal_buf, metadata, None, None);
+        for table in signal_table {
+            if let Ok(chunk) = table {
+                let arr_iter = chunk.arrays();
+                let c1 = arr_iter[0].clone();
+                let c1: &FixedSizeBinaryArray = c1.as_any().downcast_ref().unwrap();
+                let c1: BinaryArray<i32> = fixed_size_binary_binary(c1, ArrowDataType::Binary);
+                let s = polars::prelude::Series::from_arrow("fst", c1.boxed());
+                println!("fst s {s:?}");
+
+                for (idx, (name, dt)) in dts.iter().enumerate().skip(0) {
+                    let chunk = arr_iter[idx].clone();
+                    let dt = {
+                        if idx == 0 {
+                            polars::datatypes::DataType::from_arrow(&ArrowDataType::LargeBinary, true)
+                        } else {
+                            polars::datatypes::DataType::from_arrow(dt, false)
+                        }
+                    };
+                    let s = unsafe { polars::prelude::Series::from_chunks_and_dtype_unchecked(name, vec![chunk], &dt) };
+                    println!("s {s:?}");
+                }
+                // println!("arr iter {:?}", arr_iter[2]);
+                // println!("arr iter {:?}", type_name_of_val(&arr_iter[2]));
+                // let at = polars::datatypes::ArrowDataType::LargeBinary;
+                // let at = polars::datatypes::ArrowDataType::Extension(String::from("minknow.vbz", Box::new(at), Some("".to_string())));
+                // let at = polars::datatypes::ArrowDataType::Extension("minknow.vbz".to_string(), Box::new(at), Some("".to_string()));
+
+                // let lt = arr_iter[1].data_type().to_logical_type();
+                // let logical =
+                //     polars_arrow::compute::cast::cast_default(arr_iter[1].as_ref(), lt).unwrap();
+
+                // let dt = polars::datatypes::DataType::from_arrow(&at, false);
+                // // let res: polars::prelude::ChunkedArray<polars::datatypes::BinaryType> = unsafe { polars::prelude::ChunkedArray::from_chunks_and_dtype("lengths", vec![arr_iter[1].clone()], dt) };
+                // let res = polars::prelude::Series::from_arrow("lengths", arr_iter[2].clone());
+                // let res = polars::prelude::Series::from_arrow("vbz", logical);
+                // let vbz: Vec<Option<SignalVbz>> = arr_iter[1].as_ref().try_into_collection()?;
+            } else {
+                println!("Error!")
+            }
+        }
         Ok(())
     }
 
