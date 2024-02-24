@@ -1,9 +1,11 @@
 // #![feature(seek_stream_len)]
-use arrow2::datatypes::{Field, Schema};
+use arrow2::datatypes::{Schema};
 use arrow2_convert::{
     arrow_enable_vec_for_type, deserialize::ArrowDeserialize, field::ArrowField, ArrowDeserialize,
     ArrowField,
 };
+use polars_arrow::{array::{Array, BinaryArray, FixedSizeBinaryArray}, compute::cast::{binary_large_to_binary, fixed_size_binary_binary}, datatypes::Field};
+use polars::datatypes::ArrowDataType;
 
 use std::{
     fs::File,
@@ -75,7 +77,7 @@ impl ArrowField for SignalUncompressed {
     type Type = Self;
 
     fn data_type() -> arrow2::datatypes::DataType {
-        arrow2::datatypes::DataType::LargeList(Box::new(Field::new(
+        arrow2::datatypes::DataType::LargeList(Box::new(arrow2::datatypes::Field::new(
             "signal",
             arrow2::datatypes::DataType::Int16,
             true,
@@ -99,7 +101,7 @@ struct SignalRowRef<'a> {
 impl SignalRow {
     fn schema() -> Schema {
         let dt = Self::data_type();
-        Schema::from(vec![Field::new("test", dt, false)])
+        Schema::from(vec![arrow2::datatypes::Field::new("test", dt, false)])
     }
 }
 
@@ -129,6 +131,112 @@ fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
     let mut buf = vec![0u8; flen as usize];
     file.read_exact(&mut buf)?;
     Ok(buf)
+}
+
+fn convert_array(arr: Box<dyn Array>) -> Box<dyn Array> {
+    let mut dt = arr.data_type().clone();
+    if let ArrowDataType::Extension(_, pt, _) = dt {
+        dt = *pt;
+    }
+    match dt{
+        // ArrowDataType::Null => todo!(),
+        // ArrowDataType::Boolean => todo!(),
+        // ArrowDataType::Int8 => todo!(),
+        // ArrowDataType::Int16 => todo!(),
+        // ArrowDataType::Int32 => todo!(),
+        // ArrowDataType::Int64 => todo!(),
+        // ArrowDataType::UInt8 => todo!(),
+        // ArrowDataType::UInt16 => todo!(),
+        // ArrowDataType::UInt32 => todo!(),
+        // ArrowDataType::UInt64 => todo!(),
+        // ArrowDataType::Float16 => todo!(),
+        // ArrowDataType::Float32 => todo!(),
+        // ArrowDataType::Float64 => todo!(),
+        ArrowDataType::Timestamp(_, _) => todo!(),
+        // ArrowDataType::Date32 => todo!(),
+        // ArrowDataType::Date64 => todo!(),
+        // ArrowDataType::Time32(_) => todo!(),
+        // ArrowDataType::Time64(_) => todo!(),
+        // ArrowDataType::Duration(_) => todo!(),
+        ArrowDataType::Interval(_) => todo!(),
+        ArrowDataType::Binary => todo!(),
+        ArrowDataType::FixedSizeBinary(_) => {
+                let c1: &FixedSizeBinaryArray = arr.as_any().downcast_ref().unwrap();
+                let c1: BinaryArray<i32> = fixed_size_binary_binary(c1, ArrowDataType::Binary);
+                let c1 = c1.boxed();
+                c1
+        }
+        ArrowDataType::LargeBinary => {
+            let c1: &BinaryArray<i64> = arr.as_any().downcast_ref().unwrap();
+            let c1: BinaryArray<i32> = binary_large_to_binary(c1, ArrowDataType::Binary).unwrap();
+            c1.boxed()
+        }
+        // ArrowDataType::Utf8 => todo!(),
+        ArrowDataType::LargeUtf8 => todo!(),
+        ArrowDataType::List(_) => todo!(),
+        // ArrowDataType::FixedSizeList(_, _) => todo!(),
+        ArrowDataType::LargeList(_) => todo!(),
+        ArrowDataType::Struct(_) => todo!(),
+        ArrowDataType::Union(_, _, _) => todo!(),
+        // ArrowDataType::Map(_, _) => todo!(),
+        // ArrowDataType::Dictionary(_, _, _) => todo!(),
+        ArrowDataType::Decimal(_, _) => todo!(),
+        ArrowDataType::Decimal256(_, _) => todo!(),
+        ArrowDataType::Extension(_, _, _) => unreachable!(),
+        ArrowDataType::BinaryView => todo!(),
+        // ArrowDataType::Utf8View => todo!(),
+        _ => arr
+    }
+}
+
+fn convert_field(mut field: Field) -> Field {
+    match field.data_type.to_logical_type() {
+        ArrowDataType::Null => todo!(),
+        ArrowDataType::Boolean => todo!(),
+        ArrowDataType::Int8 => todo!(),
+        ArrowDataType::Int16 => todo!(),
+        ArrowDataType::Int32 => todo!(),
+        ArrowDataType::Int64 => todo!(),
+        ArrowDataType::UInt8 => todo!(),
+        ArrowDataType::UInt16 => todo!(),
+        ArrowDataType::UInt32 => field,
+        ArrowDataType::UInt64 => todo!(),
+        ArrowDataType::Float16 => todo!(),
+        ArrowDataType::Float32 => todo!(),
+        ArrowDataType::Float64 => todo!(),
+        ArrowDataType::Timestamp(_, _) => todo!(),
+        ArrowDataType::Date32 => todo!(),
+        ArrowDataType::Date64 => todo!(),
+        ArrowDataType::Time32(_) => todo!(),
+        ArrowDataType::Time64(_) => todo!(),
+        ArrowDataType::Duration(_) => todo!(),
+        ArrowDataType::Interval(_) => todo!(),
+        ArrowDataType::Binary => todo!(),
+        ArrowDataType::FixedSizeBinary(_) => {
+            Field::new(field.name, ArrowDataType::Binary, field.is_nullable)
+            // field.data_type = ArrowDataType::Binary;
+            // field
+        }
+        ArrowDataType::LargeBinary => {
+            Field::new(field.name, ArrowDataType::Binary, field.is_nullable)
+            // field.data_type = ArrowDataType::Binary;
+            // field
+        }
+        ArrowDataType::Utf8 => todo!(),
+        ArrowDataType::LargeUtf8 => todo!(),
+        ArrowDataType::List(_) => todo!(),
+        ArrowDataType::FixedSizeList(_, _) => todo!(),
+        ArrowDataType::LargeList(_) => todo!(),
+        ArrowDataType::Struct(_) => todo!(),
+        ArrowDataType::Union(_, _, _) => todo!(),
+        ArrowDataType::Map(_, _) => todo!(),
+        ArrowDataType::Dictionary(_, _, _) => todo!(),
+        ArrowDataType::Decimal(_, _) => todo!(),
+        ArrowDataType::Decimal256(_, _) => todo!(),
+        ArrowDataType::Extension(_, _, _) => todo!(),
+        ArrowDataType::BinaryView => todo!(),
+        ArrowDataType::Utf8View => todo!(),
+    }
 }
 
 #[cfg(test)]
@@ -204,6 +312,7 @@ use std::{any::type_name_of_val, fs::File, io::Cursor};
             .iter()
             .map(|f| (f.name.clone(), f.data_type.to_logical_type().clone()))
             .collect::<Vec<_>>();
+        let fields = metadata.schema.fields.clone();
         println!("metadata schema: {:?}", &metadata.schema);
         println!("metadata ipc schema: {:?}", &metadata.ipc_schema);
 
@@ -214,33 +323,38 @@ use std::{any::type_name_of_val, fs::File, io::Cursor};
         for table in signal_table {
             if let Ok(chunk) = table {
                 let arr_iter = chunk.arrays();
-                let c1 = arr_iter[0].clone();
-                let c1: &FixedSizeBinaryArray = c1.as_any().downcast_ref().unwrap();
-                let c1: BinaryArray<i32> = fixed_size_binary_binary(c1, ArrowDataType::Binary);
-                let s = polars::prelude::Series::from_arrow("fst", c1.boxed());
-                println!("fst s {s:?}");
+                // let c1 = arr_iter[0].clone();
+                // let c1: &FixedSizeBinaryArray = c1.as_any().downcast_ref().unwrap();
+                // let c1: BinaryArray<i32> = fixed_size_binary_binary(c1, ArrowDataType::Binary);
+                // let s = polars::prelude::Series::from_arrow("fst", c1.boxed());
+                // println!("fst s {s:?}");
 
-                for (idx, (name, dt)) in dts.iter().enumerate().skip(0) {
+                let mut acc = Vec::new();
+                for (idx, (name, dt)) in dts.iter().enumerate() {
                     let chunk = arr_iter[idx].clone();
-                    let dt = {
-                        if idx == 0 {
-                            polars::datatypes::DataType::from_arrow(&ArrowDataType::LargeBinary, true)
-                        } else {
-                            polars::datatypes::DataType::from_arrow(dt, false)
-                        }
-                    };
-                    let s = unsafe { polars::prelude::Series::from_chunks_and_dtype_unchecked(name, vec![chunk], &dt) };
-                    println!("s {s:?}");
+                    let chunk = convert_array(chunk);
+                    // let dt = polars::datatypes::DataType::from_arrow(dt, false);
+                    // let s = unsafe { polars::prelude::Series::from_chunks_and_dtype_unchecked(name, vec![chunk], &dt) };
+                    let s = polars::prelude::Series::from_arrow(name, chunk);
+                    // println!("s {s:?}");
+                    acc.push(s.unwrap());
                 }
+
+                let df = polars::prelude::DataFrame::from_iter(acc.into_iter());
+                println!("{df}");
+
+                // for (idx, (name, dt)) in dts.iter().enumerate().skip(0) {
+                //     let f = fields[idx].clone();
+                //     let f = convert_field(f);
+                //     let arr = arr_iter[idx].clone();
+                //     let s = polars::prelude::Series::try_from((&f, arr));
+                //     println!("s2 {s:?}");
+                // }
                 // println!("arr iter {:?}", arr_iter[2]);
                 // println!("arr iter {:?}", type_name_of_val(&arr_iter[2]));
                 // let at = polars::datatypes::ArrowDataType::LargeBinary;
                 // let at = polars::datatypes::ArrowDataType::Extension(String::from("minknow.vbz", Box::new(at), Some("".to_string())));
                 // let at = polars::datatypes::ArrowDataType::Extension("minknow.vbz".to_string(), Box::new(at), Some("".to_string()));
-
-                // let lt = arr_iter[1].data_type().to_logical_type();
-                // let logical =
-                //     polars_arrow::compute::cast::cast_default(arr_iter[1].as_ref(), lt).unwrap();
 
                 // let dt = polars::datatypes::DataType::from_arrow(&at, false);
                 // // let res: polars::prelude::ChunkedArray<polars::datatypes::BinaryType> = unsafe { polars::prelude::ChunkedArray::from_chunks_and_dtype("lengths", vec![arr_iter[1].clone()], dt) };
