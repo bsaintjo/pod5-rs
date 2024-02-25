@@ -5,11 +5,15 @@ use std::{
 };
 
 use arrow2::io::ipc::read::{read_file_metadata, FileReader};
+use polars::frame::DataFrame;
+use polars_arrow::datatypes::Field;
 
 use crate::{
+    convert_array,
     error::Pod5Error,
     footer::{ParsedFooter, ReadTable, SignalTable, Table},
-    run_info::RunInfoTable, read_table::SignalIdxs,
+    read_table::SignalIdxs,
+    run_info::RunInfoTable,
 };
 
 pub(crate) fn read_embedded_arrow<R, T>(
@@ -46,13 +50,7 @@ where
 pub(crate) struct Reader<R> {
     pub(crate) reader: R,
     pub(crate) footer: ParsedFooter,
-    pub(crate) read_table: ReadTable,
-    pub(crate) signal_table: SignalTable,
-    pub(crate) run_info_table: RunInfoTable,
 }
-
-// Maybe more useful for mmap related stuff
-impl<'a, R> Reader<R> where R: AsRef<&'a [u8]> {}
 
 impl<R> Reader<R>
 where
@@ -67,65 +65,112 @@ where
             return Err(Pod5Error::SignatureFailure("End"));
         }
         let footer = ParsedFooter::read_footer(&mut reader)?;
-        let signal_table = footer.signal_table()?;
-        let read_table = footer.read_table()?;
-        let run_info_table = footer.run_info_table()?;
+        Ok(Self { reader, footer })
+    }
+
+    pub(crate) fn read_table(&self) -> Result<DataFrame, Pod5Error> {
+        let table = self.footer.read_table()?;
+        todo!()
+    }
+}
+
+struct SignalDataFrame(DataFrame);
+
+struct SignalDataFrameIter {
+    fields: Vec<Field>,
+    table_reader: polars_arrow::io::ipc::read::FileReader<Cursor<Vec<u8>>>,
+}
+
+impl SignalDataFrameIter {
+    fn new(offset: u64, length: u64, mut file: &File) -> Result<Self, Pod5Error> {
+        let mut buf = vec![0u8; length as usize];
+        file.seek(SeekFrom::Start(offset))?;
+        file.read_exact(&mut buf)?;
+        let mut run_info_buf = Cursor::new(buf);
+        let metadata = polars_arrow::io::ipc::read::read_file_metadata(&mut run_info_buf)
+            .map_err(|_| Pod5Error::SignalTableMissing)?;
+        let fields = metadata.schema.fields.clone();
+
+        let table_reader =
+            polars_arrow::io::ipc::read::FileReader::new(run_info_buf, metadata, None, None);
         Ok(Self {
-            reader,
-            footer,
-            read_table,
-            signal_table,
-            run_info_table,
+            fields,
+            table_reader,
         })
     }
-
-    fn reads(&self) -> ReadIter {
-        todo!()
-    }
 }
 
+impl Iterator for SignalDataFrameIter {
+    type Item = Result<SignalDataFrame, Pod5Error>;
 
-struct ReadIter {
-    idxs: SignalIdxs,
-}
-
-impl Iterator for ReadIter {
-    type Item = Pod5Read;
-
+    /// TODO: Check when Result happens
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        let df = get_next_df(&self.fields, &mut self.table_reader);
+        df.map(|res| res.map(SignalDataFrame))
     }
 }
 
-struct Pod5Read;
+fn get_next_df(
+    fields: &[Field],
+    table_reader: &mut polars_arrow::io::ipc::read::FileReader<Cursor<Vec<u8>>>,
+) -> Option<Result<DataFrame, Pod5Error>> {
+    if let Ok(chunk) = table_reader.next()? {
+        let mut acc = Vec::with_capacity(fields.len());
+        for (arr, f) in chunk.arrays().iter().zip(fields.iter()) {
+            let arr = convert_array(arr.as_ref());
+            let s = polars::prelude::Series::try_from((f, arr));
+            acc.push(s.unwrap());
+        }
 
-impl Pod5Read {
-    fn read_id(&self) -> &str {
-        todo!()
+        let df = polars::prelude::DataFrame::from_iter(acc);
+        Some(Ok(df))
+    } else {
+        None
     }
+}
 
-    fn sample_count(&self) -> usize {
-        todo!()
-    }
+fn read_to_dataframe(offset: u64, length: u64, mut file: &File) -> Result<(), Pod5Error> {
+    let mut run_info_buf = vec![0u8; length as usize];
+    file.seek(SeekFrom::Start(offset))?;
+    file.read_exact(&mut run_info_buf)?;
+    let mut run_info_buf = Cursor::new(run_info_buf);
+    let metadata = polars_arrow::io::ipc::read::read_file_metadata(&mut run_info_buf)
+        .map_err(|_| Pod5Error::SignalTableMissing)?;
+    let fields = metadata.schema.fields.clone();
 
-    fn run_info(&self) -> Option<RunInfoTable> {
-        todo!()
+    let signal_table =
+        polars_arrow::io::ipc::read::FileReader::new(run_info_buf, metadata, None, None);
+    for table in signal_table {
+        if let Ok(chunk) = table {
+            let mut acc = Vec::new();
+            for (arr, f) in chunk.arrays().iter().zip(fields.iter()) {
+                let arr = convert_array(arr.as_ref());
+                let s = polars::prelude::Series::try_from((f, arr));
+                acc.push(s.unwrap());
+            }
+
+            let df = polars::prelude::DataFrame::from_iter(acc.into_iter());
+            println!("runinfo {df}");
+        } else {
+            println!("Error read table!")
+        }
     }
+    Ok(())
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    // use super::*;
 
-    #[test]
-    fn test_reader() -> eyre::Result<()> {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5")?;
-        let mut reader = Reader::from_reader(file)?;
-        let embedded_file = read_embedded_arrow(&mut reader.reader, reader.read_table)?;
-        println!("{:?}", embedded_file.schema());
-        // for _read in reader.reads() {
-        //     todo!()
-        // }
-        Ok(())
-    }
+    // #[test]
+    // fn test_reader() -> eyre::Result<()> {
+    //     let file = File::open("extra/multi_fast5_zip_v3.pod5")?;
+    //     let mut reader = Reader::from_reader(file)?;
+    //     let embedded_file = read_embedded_arrow(&mut reader.reader, reader.read_table)?;
+    //     println!("{:?}", embedded_file.schema());
+    //     // for _read in reader.reads() {
+    //     //     todo!()
+    //     // }
+    //     Ok(())
+    // }
 }
