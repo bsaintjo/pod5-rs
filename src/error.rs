@@ -24,4 +24,7 @@ pub enum Pod5Error {
 
     #[error("Missing Run Info table from POD5")]
     RunInfoTable,
+
+    #[error("{0}")]
+    PolarsError(#[from] polars::prelude::PolarsError)
 }

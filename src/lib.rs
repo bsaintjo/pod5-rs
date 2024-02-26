@@ -8,7 +8,7 @@ use error::Pod5Error;
 use footer_generated::minknow::reads_format::EmbeddedFile;
 use polars::datatypes::ArrowDataType;
 use polars_arrow::{
-    array::{Array, BinaryArray, FixedSizeBinaryArray},
+    array::{Array, BinaryArray, BooleanArray, FixedSizeBinaryArray, NullArray},
     compute::cast::{binary_large_to_binary, fixed_size_binary_binary},
     datatypes::Field,
 };
@@ -19,7 +19,7 @@ use std::{
 };
 
 pub use polars;
-// pub use polars_arrow;
+pub use polars_arrow;
 
 mod error;
 mod footer;
@@ -138,6 +138,78 @@ fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
     let mut buf = vec![0u8; flen as usize];
     file.read_exact(&mut buf)?;
     Ok(buf)
+}
+
+fn convert_array2(arr: Box<dyn Array>) -> Box<dyn Array> {
+    let dt = arr.data_type();
+    if dt == dt.to_logical_type() {
+        arr
+    } else {
+        // field.data_type = dt.to_logical_type().clone();
+        match dt.to_logical_type() {
+            ArrowDataType::Null => {
+                let conc: &NullArray = arr.as_any().downcast_ref().unwrap();
+                conc.to_boxed()
+            }
+            ArrowDataType::Boolean => {
+                let conc: &BooleanArray = arr.as_any().downcast_ref().unwrap();
+                conc.to_boxed()
+            }
+            // ArrowDataType::Int8 => todo!(),
+            // ArrowDataType::Int16 => todo!(),
+            // ArrowDataType::Int32 => todo!(),
+            // ArrowDataType::Int64 => todo!(),
+            // ArrowDataType::UInt8 => todo!(),
+            // ArrowDataType::UInt16 => todo!(),
+            // ArrowDataType::UInt32 => todo!(),
+            // ArrowDataType::UInt64 => todo!(),
+            // ArrowDataType::Float16 => todo!(),
+            // ArrowDataType::Float32 => todo!(),
+            // ArrowDataType::Float64 => todo!(),
+            // ArrowDataType::Timestamp(_, _) => todo!(),
+            // ArrowDataType::Date32 => todo!(),
+            // ArrowDataType::Date64 => todo!(),
+            // ArrowDataType::Time32(_) => todo!(),
+            // ArrowDataType::Time64(_) => todo!(),
+            // ArrowDataType::Duration(_) => todo!(),
+            // ArrowDataType::Interval(_) => todo!(),
+            // ArrowDataType::Binary => todo!(),
+            ArrowDataType::FixedSizeBinary(_) => {
+                let conc: &FixedSizeBinaryArray = arr.as_any().downcast_ref().unwrap();
+                let conc = FixedSizeBinaryArray::new(
+                    ArrowDataType::FixedSizeBinary(16),
+                    conc.values().clone(),
+                    conc.validity().cloned(),
+                );
+                conc.to_boxed()
+            }
+            ArrowDataType::LargeBinary => {
+                let conc: &BinaryArray<i64> = arr.as_any().downcast_ref().unwrap();
+                let conc = BinaryArray::new(
+                    ArrowDataType::LargeBinary,
+                    conc.offsets().clone(),
+                    conc.values().clone(),
+                    conc.validity().cloned(),
+                );
+                conc.to_boxed()
+            }
+            // ArrowDataType::Utf8 => todo!(),
+            // ArrowDataType::LargeUtf8 => todo!(),
+            // ArrowDataType::List(_) => todo!(),
+            // ArrowDataType::FixedSizeList(_, _) => todo!(),
+            // ArrowDataType::LargeList(_) => todo!(),
+            // ArrowDataType::Struct(_) => todo!(),
+            // ArrowDataType::Union(_, _, _) => todo!(),
+            // ArrowDataType::Map(_, _) => todo!(),
+            // ArrowDataType::Dictionary(_, _, _) => todo!(),
+            // ArrowDataType::Decimal(_, _) => todo!(),
+            // ArrowDataType::Decimal256(_, _) => todo!(),
+            // ArrowDataType::Extension(_, _, _) => unreachable!(),
+            // ArrowDataType::BinaryView => todo!(),
+            // ArrowDataType::Utf8View => todo!(),
+            _ => unimplemented!(),
+        }
+    }
 }
 
 /// Convert Array into a compatible
@@ -307,8 +379,8 @@ mod tests {
         for table in signal_table {
             if let Ok(chunk) = table {
                 let mut acc = Vec::new();
-                for (arr, f) in chunk.arrays().iter().zip(fields.iter()) {
-                    let arr = convert_array(arr.as_ref());
+                for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
+                    let arr = convert_array2(arr);
                     let s = polars::prelude::Series::try_from((f, arr));
                     acc.push(s.unwrap());
                 }
