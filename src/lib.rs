@@ -1,7 +1,7 @@
 // #![feature(seek_stream_len)]
 use std::{
     fs::File,
-    io::{Cursor, Read, Seek, SeekFrom},
+    io::{self, Cursor, Read, Seek, SeekFrom},
 };
 
 use error::Pod5Error;
@@ -105,7 +105,7 @@ pub mod svb16;
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
-fn check_signature<R>(mut reader: R) -> eyre::Result<bool>
+fn check_signature<R>(mut reader: R) -> Result<bool, io::Error>
 where
     R: Read + Seek,
 {
@@ -114,7 +114,7 @@ where
     Ok(buf == FILE_SIGNATURE)
 }
 
-fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
+fn read_footer(mut file: &File) -> Result<Vec<u8>, io::Error> {
     let file_size = file.metadata()?.len();
     let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
     let footer_length = footer_length_end - 8;

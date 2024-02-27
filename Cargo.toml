@@ -6,10 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# Parse embedded arrow files and data types
-# arrow2 = { version = "0.16.0", features = ["io_ipc"] }
-# arrow2_convert = "0.4.2"
-
 # encode/decode of sizes in control bytes in svb
 bitvec = "1.0.1"
 delta-encoding = "0.4.0"
@@ -23,14 +19,23 @@ itertools = "0.12.1"
 flatbuffers = "23.1.21"
 
 # Error handling
-eyre = "0.6.8"
-miette = "7.1.0"
 thiserror = "1.0.39"
+
+# DataFrame API
 polars-arrow = { version = "0.37.0", features = ["io_ipc", "compute_cast"] }
-polars = { version = "0.37.0", features = ["dtype-full", "dtype-array", "timezones", "lazy"] }
+polars = { version = "0.37.0", features = [
+    "dtype-full",
+    "dtype-array",
+    "timezones",
+    "lazy",
+] }
+
+# Parsing read ids
 uuid = "1.7.0"
+log = "0.4.20"
 
 
 [dev-dependencies]
+eyre = "0.6.8"
 # Testing small files by memmap
 memmap2 = "0.9.4"

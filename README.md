@@ -18,10 +18,6 @@ This library performs the necessary casting in order to use `polars` on POD5 Apa
 - [ ] DataFrame for Reads Table
 - [ ] Support mmap
 - [ ] Arrow-based API
-
-## Notes
-
-I won't be working on this consistently, so here are a shmattering of notes for anyone who might be interested in how I got this working.
-
-in [`svb16.rs`](src/svb16.rs), there is an implementation of the code for decompressing compressed POD5
-In short, ONT uses a different version of streamvbyte to deal with 16-bit integers (signal output) instead of 32-bit like the original
+- [ ] Optimize decompression
+  - [ ] Switch Zig-zag encoding dependency
+  - [ ] Try `varint-rs`, `varint-simd`, etc.
