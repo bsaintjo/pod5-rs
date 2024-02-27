@@ -1,5 +1,6 @@
+workspace = { members = ["examples/find-all-reads"] }
 [package]
-name = "pod5-rs"
+name = "pod5"
 version = "0.1.0"
 edition = "2021"
 authors = ["Brandon Saint-Joh <saint-john@lbl.gov>"]
