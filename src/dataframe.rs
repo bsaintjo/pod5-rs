@@ -21,7 +21,7 @@ use polars_arrow::{
 use crate::{error::Pod5Error, svb16::decode};
 
 /// DataFrame wrapper for the POD5 Signal table.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SignalDataFrame(pub(crate) DataFrame);
 
 impl SignalDataFrame {
@@ -101,7 +101,7 @@ impl Iterator for SignalDataFrameIter {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReadDataFrame(pub(crate) DataFrame);
 
 impl ReadDataFrame {
