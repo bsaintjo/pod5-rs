@@ -7,16 +7,14 @@ extern crate flatbuffers;
 #[allow(unused_imports, dead_code)]
 pub mod minknow {
 
-    use core::cmp::Ordering;
-    use core::mem;
+    use core::{cmp::Ordering, mem};
 
     extern crate flatbuffers;
     use self::flatbuffers::{EndianScalar, Follow};
     #[allow(unused_imports, dead_code)]
     pub mod reads_format {
 
-        use core::cmp::Ordering;
-        use core::mem;
+        use core::{cmp::Ordering, mem};
 
         extern crate flatbuffers;
         use self::flatbuffers::{EndianScalar, Follow};

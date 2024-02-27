@@ -5,7 +5,7 @@ use flatbuffers::root;
 use crate::{
     error::Pod5Error,
     footer_generated::minknow::reads_format::{ContentType, Footer},
-    FILE_SIGNATURE, run_info::RunInfoTable,
+    FILE_SIGNATURE,
 };
 
 #[derive(Debug)]
@@ -25,7 +25,10 @@ impl Table {
 }
 
 #[derive(Debug)]
-pub struct ReadTable(Table);
+pub struct RunInfoTable(Table);
+
+#[derive(Debug)]
+pub(crate) struct ReadTable(Table);
 
 impl AsRef<Table> for ReadTable {
     fn as_ref(&self) -> &Table {
@@ -34,14 +37,13 @@ impl AsRef<Table> for ReadTable {
 }
 
 #[derive(Debug)]
-pub struct SignalTable(Table);
+pub(crate) struct SignalTable(Table);
 
 impl AsRef<Table> for SignalTable {
     fn as_ref(&self) -> &Table {
         &self.0
     }
 }
-
 
 pub struct ParsedFooter {
     data: Vec<u8>,
@@ -70,21 +72,21 @@ impl ParsedFooter {
         })
     }
 
-    pub fn read_table(&self) -> Result<ReadTable, Pod5Error> {
+    pub(crate) fn read_table(&self) -> Result<ReadTable, Pod5Error> {
         Ok(ReadTable(self.find_table(
             ContentType::ReadsTable,
             Pod5Error::ReadTableMissing,
         )?))
     }
 
-    pub fn signal_table(&self) -> Result<SignalTable, Pod5Error> {
+    pub(crate) fn signal_table(&self) -> Result<SignalTable, Pod5Error> {
         Ok(SignalTable(self.find_table(
             ContentType::SignalTable,
             Pod5Error::SignalTableMissing,
         )?))
     }
 
-    pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, Pod5Error> {
+    pub(crate) fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, Pod5Error> {
         reader.rewind()?;
         // let file_size = reader.stream_len()?;
         // let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;

@@ -1,119 +1,107 @@
 // #![feature(seek_stream_len)]
-use arrow2::datatypes::Schema;
-use arrow2_convert::{
-    arrow_enable_vec_for_type, deserialize::ArrowDeserialize, field::ArrowField, ArrowDeserialize,
-    ArrowField,
-};
-use error::Pod5Error;
-use footer_generated::minknow::reads_format::EmbeddedFile;
-use polars::datatypes::ArrowDataType;
-use polars_arrow::{
-    array::{Array, BinaryArray, BooleanArray, FixedSizeBinaryArray, NullArray},
-    compute::cast::{binary_large_to_binary, fixed_size_binary_binary},
-    datatypes::Field,
-};
-
 use std::{
     fs::File,
     io::{Cursor, Read, Seek, SeekFrom},
 };
 
+use error::Pod5Error;
+use footer_generated::minknow::reads_format::EmbeddedFile;
 pub use polars;
 pub use polars_arrow;
 
-mod error;
+use crate::dataframe::convert_array;
+
+pub mod dataframe;
+pub mod error;
 mod footer;
 mod footer_generated;
-mod read_table;
-mod reader;
-mod run_info;
-mod signal_table;
-mod svb16;
+pub mod reader;
+pub mod svb16;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SignalUuid(Vec<u8>);
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// struct SignalUuid(Vec<u8>);
 
-impl ArrowField for SignalUuid {
-    type Type = Self;
+// impl ArrowField for SignalUuid {
+//     type Type = Self;
 
-    fn data_type() -> arrow2::datatypes::DataType {
-        arrow2::datatypes::DataType::Extension(
-            "minknow.uuid".to_string(),
-            Box::new(arrow2::datatypes::DataType::FixedSizeBinary(16)),
-            Some("".to_string()),
-        )
-    }
-}
+//     fn data_type() -> arrow2::datatypes::DataType {
+//         arrow2::datatypes::DataType::Extension(
+//             "minknow.uuid".to_string(),
+//             Box::new(arrow2::datatypes::DataType::FixedSizeBinary(16)),
+//             Some("".to_string()),
+//         )
+//     }
+// }
 
-impl ArrowDeserialize for SignalUuid {
-    type ArrayType = arrow2::array::FixedSizeBinaryArray;
+// impl ArrowDeserialize for SignalUuid {
+//     type ArrayType = arrow2::array::FixedSizeBinaryArray;
 
-    fn arrow_deserialize(
-        v: <&Self::ArrayType as IntoIterator>::Item,
-    ) -> Option<<Self as ArrowField>::Type> {
-        v.map(|t| SignalUuid(t.to_vec()))
-    }
-}
+//     fn arrow_deserialize(
+//         v: <&Self::ArrayType as IntoIterator>::Item,
+//     ) -> Option<<Self as ArrowField>::Type> {
+//         v.map(|t| SignalUuid(t.to_vec()))
+//     }
+// }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SignalVbz(Vec<u8>);
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// struct SignalVbz(Vec<u8>);
 
-impl ArrowField for SignalVbz {
-    type Type = Self;
+// impl ArrowField for SignalVbz {
+//     type Type = Self;
 
-    fn data_type() -> arrow2::datatypes::DataType {
-        arrow2::datatypes::DataType::Extension(
-            "minknow.vbz".to_string(),
-            Box::new(arrow2::datatypes::DataType::LargeBinary),
-            Some("".to_string()),
-        )
-    }
-}
+//     fn data_type() -> arrow2::datatypes::DataType {
+//         arrow2::datatypes::DataType::Extension(
+//             "minknow.vbz".to_string(),
+//             Box::new(arrow2::datatypes::DataType::LargeBinary),
+//             Some("".to_string()),
+//         )
+//     }
+// }
 
-impl ArrowDeserialize for SignalVbz {
-    type ArrayType = arrow2::array::BinaryArray<i64>;
+// impl ArrowDeserialize for SignalVbz {
+//     type ArrayType = arrow2::array::BinaryArray<i64>;
 
-    fn arrow_deserialize(
-        v: <&Self::ArrayType as IntoIterator>::Item,
-    ) -> Option<<Self as ArrowField>::Type> {
-        v.map(|t| SignalVbz(t.to_vec()))
-    }
-}
+//     fn arrow_deserialize(
+//         v: <&Self::ArrayType as IntoIterator>::Item,
+//     ) -> Option<<Self as ArrowField>::Type> {
+//         v.map(|t| SignalVbz(t.to_vec()))
+//     }
+// }
 
-#[derive(Debug, Clone, PartialEq, Eq, ArrowDeserialize)]
-struct SignalUncompressed(Vec<i16>);
+// #[derive(Debug, Clone, PartialEq, Eq, ArrowDeserialize)]
+// struct SignalUncompressed(Vec<i16>);
 
-impl ArrowField for SignalUncompressed {
-    type Type = Self;
+// impl ArrowField for SignalUncompressed {
+//     type Type = Self;
 
-    fn data_type() -> arrow2::datatypes::DataType {
-        arrow2::datatypes::DataType::LargeList(Box::new(arrow2::datatypes::Field::new(
-            "signal",
-            arrow2::datatypes::DataType::Int16,
-            true,
-        )))
-    }
-}
+//     fn data_type() -> arrow2::datatypes::DataType {
+//         arrow2::datatypes::DataType::LargeList(Box::new(arrow2::datatypes::Field::new(
+//             "signal",
+//             arrow2::datatypes::DataType::Int16,
+//             true,
+//         )))
+//     }
+// }
 
-#[derive(Debug, Clone, PartialEq, ArrowField, ArrowDeserialize)]
-struct SignalRow {
-    read_id: Option<SignalUuid>,
-    signal: Option<SignalVbz>,
-    samples: Option<u32>,
-}
+// #[derive(Debug, Clone, PartialEq, ArrowField, ArrowDeserialize)]
+// struct SignalRow {
+//     read_id: Option<SignalUuid>,
+//     signal: Option<SignalVbz>,
+//     samples: Option<u32>,
+// }
 
-struct SignalRowRef<'a> {
-    read_id: &'a [Option<SignalUuid>],
-    signal: &'a [Option<SignalVbz>],
-    samples: &'a [Option<u32>],
-}
+// struct SignalRowRef<'a> {
+//     read_id: &'a [Option<SignalUuid>],
+//     signal: &'a [Option<SignalVbz>],
+//     samples: &'a [Option<u32>],
+// }
 
-impl SignalRow {
-    fn schema() -> Schema {
-        let dt = Self::data_type();
-        Schema::from(vec![arrow2::datatypes::Field::new("test", dt, false)])
-    }
-}
+// impl SignalRow {
+//     fn schema() -> Schema {
+//         let dt = Self::data_type();
+//         Schema::from(vec![arrow2::datatypes::Field::new("test", dt, false)])
+//     }
+// }
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
@@ -140,142 +128,7 @@ fn read_footer(mut file: &File) -> eyre::Result<Vec<u8>> {
     Ok(buf)
 }
 
-fn convert_array2(arr: Box<dyn Array>) -> Box<dyn Array> {
-    let dt = arr.data_type();
-    if dt == dt.to_logical_type() {
-        arr
-    } else {
-        // field.data_type = dt.to_logical_type().clone();
-        match dt.to_logical_type() {
-            ArrowDataType::Null => {
-                let conc: &NullArray = arr.as_any().downcast_ref().unwrap();
-                conc.to_boxed()
-            }
-            ArrowDataType::Boolean => {
-                let conc: &BooleanArray = arr.as_any().downcast_ref().unwrap();
-                conc.to_boxed()
-            }
-            // ArrowDataType::Int8 => todo!(),
-            // ArrowDataType::Int16 => todo!(),
-            // ArrowDataType::Int32 => todo!(),
-            // ArrowDataType::Int64 => todo!(),
-            // ArrowDataType::UInt8 => todo!(),
-            // ArrowDataType::UInt16 => todo!(),
-            // ArrowDataType::UInt32 => todo!(),
-            // ArrowDataType::UInt64 => todo!(),
-            // ArrowDataType::Float16 => todo!(),
-            // ArrowDataType::Float32 => todo!(),
-            // ArrowDataType::Float64 => todo!(),
-            // ArrowDataType::Timestamp(_, _) => todo!(),
-            // ArrowDataType::Date32 => todo!(),
-            // ArrowDataType::Date64 => todo!(),
-            // ArrowDataType::Time32(_) => todo!(),
-            // ArrowDataType::Time64(_) => todo!(),
-            // ArrowDataType::Duration(_) => todo!(),
-            // ArrowDataType::Interval(_) => todo!(),
-            // ArrowDataType::Binary => todo!(),
-            ArrowDataType::FixedSizeBinary(_) => {
-                let conc: &FixedSizeBinaryArray = arr.as_any().downcast_ref().unwrap();
-                let conc = FixedSizeBinaryArray::new(
-                    ArrowDataType::FixedSizeBinary(16),
-                    conc.values().clone(),
-                    conc.validity().cloned(),
-                );
-                conc.to_boxed()
-            }
-            ArrowDataType::LargeBinary => {
-                let conc: &BinaryArray<i64> = arr.as_any().downcast_ref().unwrap();
-                let conc = BinaryArray::new(
-                    ArrowDataType::LargeBinary,
-                    conc.offsets().clone(),
-                    conc.values().clone(),
-                    conc.validity().cloned(),
-                );
-                conc.to_boxed()
-            }
-            // ArrowDataType::Utf8 => todo!(),
-            // ArrowDataType::LargeUtf8 => todo!(),
-            // ArrowDataType::List(_) => todo!(),
-            // ArrowDataType::FixedSizeList(_, _) => todo!(),
-            // ArrowDataType::LargeList(_) => todo!(),
-            // ArrowDataType::Struct(_) => todo!(),
-            // ArrowDataType::Union(_, _, _) => todo!(),
-            // ArrowDataType::Map(_, _) => todo!(),
-            // ArrowDataType::Dictionary(_, _, _) => todo!(),
-            // ArrowDataType::Decimal(_, _) => todo!(),
-            // ArrowDataType::Decimal256(_, _) => todo!(),
-            // ArrowDataType::Extension(_, _, _) => unreachable!(),
-            // ArrowDataType::BinaryView => todo!(),
-            // ArrowDataType::Utf8View => todo!(),
-            _ => unimplemented!(),
-        }
-    }
-}
-
-/// Convert Array into a compatible
-fn convert_array(arr: &dyn Array) -> Box<dyn Array> {
-    let mut dt = arr.data_type().clone();
-    let mut s = String::new();
-    let mut md = Some(String::new());
-    if let ArrowDataType::Extension(n, pt, mdo) = dt {
-        s = n;
-        md = mdo;
-        dt = *pt;
-    }
-    match dt {
-        // ArrowDataType::Null => todo!(),
-        // ArrowDataType::Boolean => todo!(),
-        // ArrowDataType::Int8 => todo!(),
-        // ArrowDataType::Int16 => todo!(),
-        // ArrowDataType::Int32 => todo!(),
-        // ArrowDataType::Int64 => todo!(),
-        // ArrowDataType::UInt8 => todo!(),
-        // ArrowDataType::UInt16 => todo!(),
-        // ArrowDataType::UInt32 => todo!(),
-        // ArrowDataType::UInt64 => todo!(),
-        // ArrowDataType::Float16 => todo!(),
-        // ArrowDataType::Float32 => todo!(),
-        // ArrowDataType::Float64 => todo!(),
-        // ArrowDataType::Timestamp(_, _) => todo!("{dt:?}"),
-        // ArrowDataType::Date32 => todo!(),
-        // ArrowDataType::Date64 => todo!(),
-        // ArrowDataType::Time32(_) => todo!(),
-        // ArrowDataType::Time64(_) => todo!(),
-        // ArrowDataType::Duration(_) => todo!(),
-        ArrowDataType::Interval(_) => todo!("{dt:?}"),
-        // ArrowDataType::Binary => todo!("{dt:?}"),
-        ArrowDataType::FixedSizeBinary(_) => {
-            let c1: &FixedSizeBinaryArray = arr.as_any().downcast_ref().unwrap();
-            let dt = ArrowDataType::Binary;
-            let c1: BinaryArray<i32> = fixed_size_binary_binary(c1, dt);
-            c1.boxed()
-        }
-        ArrowDataType::LargeBinary => {
-            let c1: &BinaryArray<i64> = arr.as_any().downcast_ref().unwrap();
-            let dt = ArrowDataType::Binary;
-            let c1: BinaryArray<i32> = binary_large_to_binary(c1, dt).unwrap();
-            c1.boxed()
-        }
-        // ArrowDataType::Utf8 => todo!(),
-        ArrowDataType::LargeUtf8 => todo!("{dt:?}"),
-        // ArrowDataType::List(_) => todo!("{dt:?}"),
-        // ArrowDataType::FixedSizeList(_, _) => todo!(),
-        ArrowDataType::LargeList(_) => todo!("{dt:?}"),
-        ArrowDataType::Struct(_) => todo!("{dt:?}"),
-        ArrowDataType::Union(_, _, _) => todo!("{dt:?}"),
-        // ArrowDataType::Map(_, _) => todo!(),
-        // ArrowDataType::Dictionary(_, _, _) => todo!(),
-        ArrowDataType::Decimal(_, _) => todo!("{dt:?}"),
-        ArrowDataType::Decimal256(_, _) => todo!("{dt:?}"),
-        ArrowDataType::Extension(_, _, _) => unreachable!(),
-        ArrowDataType::BinaryView => todo!("{dt:?}"),
-        // ArrowDataType::Utf8View => todo!(),
-        _ => arr.to_boxed(),
-    }
-}
-
 fn to_dataframe(efile: &EmbeddedFile, mut file: &File) -> Result<(), Pod5Error> {
-    // let run_info_efile = embedded.get(1);
     let offset = efile.offset() as u64;
     let length = efile.length() as u64;
     let mut run_info_buf = vec![0u8; length as usize];
@@ -311,14 +164,13 @@ mod tests {
 
     use std::{fs::File, io::Cursor};
 
-    use arrow2::io::ipc::read::{read_file_metadata, FileReader};
-    use arrow2_convert::deserialize::TryIntoCollection;
+    // use arrow2::io::ipc::read::read_file_metadata;
     use flatbuffers::root;
     use memmap2::MmapOptions;
-
-    use crate::footer_generated::minknow::reads_format::Footer;
+    use polars_arrow::io::ipc::read::read_file_metadata;
 
     use super::*;
+    use crate::{dataframe::convert_array2, footer_generated::minknow::reads_format::Footer};
 
     #[test]
     fn test_pod5() -> eyre::Result<()> {
@@ -446,14 +298,15 @@ mod tests {
     //     for table in signal_table {
     //         if let Ok(chunk) = table {
     //             let arr_iter = chunk.arrays();
-    //             // let uuid: Vec<Option<SignalUuid>> = arr_iter[0].as_ref().try_into_collection()?;
-    //             let vbz: Vec<Option<SignalVbz>> = arr_iter[1].as_ref().try_into_collection()?;
-    //             let samples: Vec<Option<u32>> = arr_iter[2].as_ref().try_into_collection()?;
-    //             println!("samples {samples:?}");
-    //             let data: &[u8] = vbz[0].as_ref().unwrap().0.as_ref();
-    //             // let rest: &[u8] = vbz[1].as_ref().unwrap().0.as_ref();
-    //             // let mut total_data = data.to_vec();
-    //             // total_data.extend_from_slice(rest);
+    //             // let uuid: Vec<Option<SignalUuid>> =
+    // arr_iter[0].as_ref().try_into_collection()?;             let vbz:
+    // Vec<Option<SignalVbz>> = arr_iter[1].as_ref().try_into_collection()?;
+    //             let samples: Vec<Option<u32>> =
+    // arr_iter[2].as_ref().try_into_collection()?;
+    // println!("samples {samples:?}");             let data: &[u8] =
+    // vbz[0].as_ref().unwrap().0.as_ref();             // let rest: &[u8] =
+    // vbz[1].as_ref().unwrap().0.as_ref();             // let mut total_data =
+    // data.to_vec();             // total_data.extend_from_slice(rest);
     //             // let total_data = Cursor::new(total_data);
     //             // let res = zstd::decode_all(total_data).unwrap();
     //             // println!("combined zstd decoded len {}", res.len());
@@ -463,10 +316,10 @@ mod tests {
     //             let decoded = svb16::decode(data, count).unwrap();
     //             println!("decoded len: {}", decoded.len());
     //             // println!("decoded: {decoded:?}");
-    //             // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz, samples: &samples };
-    //             // for arr in chunk.into_arrays().into_iter() {
-    //             //     let row: Vec<SignalRow> = arr.try_into_collection()?;
-    //             // }
+    //             // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz,
+    // samples: &samples };             // for arr in
+    // chunk.into_arrays().into_iter() {             //     let row:
+    // Vec<SignalRow> = arr.try_into_collection()?;             // }
     //         } else {
     //             println!("Failed");
     //         }

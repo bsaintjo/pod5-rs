@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 # Parse embedded arrow files and data types
-arrow2 = { version = "0.16.0", features = ["io_ipc"] }
-arrow2_convert = "0.4.2"
+# arrow2 = { version = "0.16.0", features = ["io_ipc"] }
+# arrow2_convert = "0.4.2"
 
 # encode/decode of sizes in control bytes in svb
 bitvec = "1.0.1"

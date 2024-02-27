@@ -1,12 +1,16 @@
+//! Error types.
 use std::io;
 
 use flatbuffers::InvalidFlatbuffer;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Pod5Error {
+    /// Reason why flatbuffers failed to parse the footer
     #[error("Failed to parse footer, {0}")]
     FooterParserFailure(#[from] InvalidFlatbuffer),
 
+    /// The signature at the beginning or ending of the file wasn't able to be verified.
+    /// This may mean that the file was corrupted or incorrectly written.
     #[error("Failed to verify signature: {0}")]
     SignatureFailure(&'static str),
 
@@ -25,6 +29,7 @@ pub enum Pod5Error {
     #[error("Missing Run Info table from POD5")]
     RunInfoTable,
 
+    /// Error occured in the DataFrame API from polars
     #[error("{0}")]
-    PolarsError(#[from] polars::prelude::PolarsError)
+    PolarsError(#[from] polars::prelude::PolarsError),
 }

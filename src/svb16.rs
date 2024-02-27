@@ -1,14 +1,15 @@
-//! This implements the compression algorithm used in POD5 format
+//! This implements the compression algorithm used in POD5 format.
 //!
-//! POD5 uses a variant of the streamvbyte algorithm. Since signal values are only 16-bit (i16) values,
-//! it only needs to consider if values fit into 1 data byte or 2 data bytes. This means that it only needs
-//! to use 1-bit to encode the size, so every control byte encodes up to 8 values, instead of 4..
+//! POD5 uses a variant of the streamvbyte algorithm. Since signal values are
+//! only 16-bit (i16) values, it only needs to consider if values fit into 1
+//! data byte or 2 data bytes. This means that it only needs to use 1-bit to
+//! encode the size, so every control byte encodes up to 8 values, instead of
+//! 4..
 
 use std::io::{self, Cursor};
 
 use bitvec::{prelude::Msb0, slice::Iter, view::BitView};
-use delta_encoding::DeltaDecoderExt;
-use delta_encoding::DeltaEncoderExt;
+use delta_encoding::{DeltaDecoderExt, DeltaEncoderExt};
 use itertools::Itertools;
 use zigzag::ZigZag;
 
@@ -71,8 +72,8 @@ pub fn decode(compressed: &[u8], count: usize) -> io::Result<Vec<i16>> {
         .collect())
 }
 
-// TODO We can know exactly how many ctrl bytes are needed and max number of data bytes needed
-// Use Vec::with_capacaity to avoid multiplie allocations
+// TODO We can know exactly how many ctrl bytes are needed and max number of
+// data bytes needed Use Vec::with_capacaity to avoid multiplie allocations
 struct Encoder<I> {
     ctrl_bytes: Vec<u8>,
     data_bytes: Vec<u8>,
