@@ -9,7 +9,7 @@ use footer_generated::minknow::reads_format::EmbeddedFile;
 pub use polars;
 pub use polars_arrow;
 
-use crate::dataframe::convert_array;
+use crate::dataframe::compatibility::convert_array;
 
 pub mod dataframe;
 pub mod error;
@@ -170,7 +170,7 @@ mod tests {
     use polars_arrow::io::ipc::read::read_file_metadata;
 
     use super::*;
-    use crate::{dataframe::convert_array2, footer_generated::minknow::reads_format::Footer};
+    use crate::{dataframe::compatibility::convert_array2, footer_generated::minknow::reads_format::Footer};
 
     #[test]
     fn test_pod5() -> eyre::Result<()> {
