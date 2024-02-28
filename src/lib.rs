@@ -8,6 +8,7 @@ use error::Pod5Error;
 use footer_generated::minknow::reads_format::EmbeddedFile;
 pub use polars;
 pub use polars_arrow;
+use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
 
 use crate::dataframe::compatibility::convert_array;
 
@@ -128,19 +129,19 @@ fn read_footer(mut file: &File) -> Result<Vec<u8>, io::Error> {
     Ok(buf)
 }
 
-fn to_dataframe(efile: &EmbeddedFile, mut file: &File) -> Result<(), Pod5Error> {
+fn to_dataframe<R: Read + Seek>(efile: &EmbeddedFile, mut file: R) -> Result<(), Pod5Error> {
     let offset = efile.offset() as u64;
     let length = efile.length() as u64;
     let mut run_info_buf = vec![0u8; length as usize];
     file.seek(SeekFrom::Start(offset))?;
     file.read_exact(&mut run_info_buf)?;
     let mut run_info_buf = Cursor::new(run_info_buf);
-    let metadata = polars_arrow::io::ipc::read::read_file_metadata(&mut run_info_buf)
+    let metadata = read_file_metadata(&mut run_info_buf)
         .map_err(|_| Pod5Error::SignalTableMissing)?;
     let fields = metadata.schema.fields.clone();
 
     let signal_table =
-        polars_arrow::io::ipc::read::FileReader::new(run_info_buf, metadata, None, None);
+        FileReader::new(run_info_buf, metadata, None, None);
     for table in signal_table {
         if let Ok(chunk) = table {
             let mut acc = Vec::new();

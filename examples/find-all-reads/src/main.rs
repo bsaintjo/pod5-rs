@@ -1,7 +1,4 @@
-use std::{
-    fs::File,
-    path::PathBuf,
-};
+use std::{fs::File, path::PathBuf};
 
 use pico_args::Arguments;
 use pod5::{self, reader::Reader};
@@ -17,7 +14,7 @@ fn run(path: PathBuf) -> eyre::Result<()> {
             .column("uuid")?
             .str()?
             .into_iter()
-            .flatten() // Skip null rows
+            .flatten()
         {
             println!("{read_id:?}");
         }
