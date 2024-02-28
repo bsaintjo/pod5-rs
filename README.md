@@ -11,6 +11,7 @@ This library performs the necessary casting in order to use `polars` on POD5 Apa
 ## Roadmap
 
 - [ ] Convienence/examples for conversion to SLOW5/BLOW5
+- [ ] Cast dictionarys to values to support older POD5 versions
 - [x] VBZ Compression
 - [ ] DataFrame for Signal Table
   - [x] Convert read_id into binary

@@ -4,18 +4,29 @@
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use polars::{
+    datatypes::ArrowDataType,
     error::PolarsError,
     frame::DataFrame,
     lazy::{dsl::GetOutput, frame::IntoLazy},
-    prelude as pl,
-    prelude::NamedFrom,
+    prelude::{self as pl, NamedFrom},
     series::Series,
 };
 use polars_arrow::{
-    array::{Array, BinaryArray, BooleanArray, FixedSizeBinaryArray, NullArray},
-    compute::cast::{binary_large_to_binary, fixed_size_binary_binary},
+    array::{
+        Array, BinaryArray, BooleanArray, DictionaryArray, FixedSizeBinaryArray, NullArray,
+        PrimitiveArray, StructArray, Utf8Array,
+    },
+    bitmap::{Bitmap, MutableBitmap},
+    compute::{
+        cast::{
+            binary_large_to_binary, dictionary_to_values, fixed_size_binary_binary,
+            primitive_to_primitive, utf8_to_binary, utf8_to_large_utf8,
+        },
+        take::take_unchecked,
+    },
     datatypes::Field,
     io::ipc::read::{read_file_metadata, FileReader},
+    types::Index,
 };
 
 use crate::{error::Pod5Error, svb16::decode};
@@ -134,6 +145,10 @@ pub struct ReadDataFrameIter {
 }
 
 impl ReadDataFrameIter {
+    pub fn fields(&self) -> &[Field] {
+        self.fields.as_ref()
+    }
+
     pub(crate) fn new<R: Read + Seek>(
         offset: u64,
         length: u64,
@@ -192,12 +207,10 @@ pub(crate) fn read_to_dataframe<R: Read + Seek>(
     file.seek(SeekFrom::Start(offset))?;
     file.read_exact(&mut run_info_buf)?;
     let mut run_info_buf = Cursor::new(run_info_buf);
-    let metadata =
-        polars_arrow::io::ipc::read::read_file_metadata(&mut run_info_buf).map_err(|_| err)?;
+    let metadata = read_file_metadata(&mut run_info_buf).map_err(|_| err)?;
     let fields = metadata.schema.fields.clone();
 
-    let signal_table =
-        polars_arrow::io::ipc::read::FileReader::new(run_info_buf, metadata, None, None);
+    let signal_table = FileReader::new(run_info_buf, metadata, None, None);
     Ok((fields, signal_table))
 }
 
@@ -248,8 +261,86 @@ pub(crate) fn decompress_signal_series(
     Ok(Some(Series::new("decompressed", out)))
 }
 
+/// Copied from polars_arrow because it isn't exported
+///
+/// Relevant code: https://docs.rs/polars-arrow/0.37.0/src/polars_arrow/compute/take/structure.rs.html#23
+#[inline]
+unsafe fn take_validity<I: Index>(
+    validity: Option<&Bitmap>,
+    indices: &PrimitiveArray<I>,
+) -> Option<Bitmap> {
+    let indices_validity = indices.validity();
+    match (validity, indices_validity) {
+        (None, _) => indices_validity.cloned(),
+        (Some(validity), None) => {
+            let iter = indices.values().iter().map(|index| {
+                let index = index.to_usize();
+                validity.get_bit_unchecked(index)
+            });
+            MutableBitmap::from_trusted_len_iter(iter).into()
+        }
+        (Some(validity), _) => {
+            let iter = indices.iter().map(|x| match x {
+                Some(index) => {
+                    let index = index.to_usize();
+                    validity.get_bit_unchecked(index)
+                }
+                None => false,
+            });
+            MutableBitmap::from_trusted_len_iter(iter).into()
+        }
+    }
+}
+
+// Helps convert dictionaries in POD5s to be compatible with polars
+// polars_arrow::compute::take::take_unchecked only supports a handful of types so we need to manually
+// manage the conversion.
+//
+// Relevant documentation:
+// https://docs.rs/polars-arrow/0.37.0/src/polars_arrow/compute/take/structure.rs.html#50
+// https://docs.rs/polars-arrow/0.37.0/src/polars_arrow/compute/take/mod.rs.html#72
+pub(crate) fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
+    let arr_dict = arr.as_any().downcast_ref::<DictionaryArray<i16>>().unwrap();
+    let pl::ArrowDataType::Struct(..) = arr_dict.values().data_type() else {
+        return arr;
+    };
+    let indices = primitive_to_primitive::<_, i64>(arr_dict.keys(), &pl::ArrowDataType::Int64);
+    let s = arr_dict.values().as_any().downcast_ref::<StructArray>().unwrap();
+    let pl::ArrowDataType::Struct(fields) = s.data_type().clone() else {
+        unreachable!()
+    };
+    let mut new_fields = Vec::with_capacity(fields.capacity());
+    let brr: Vec<Box<dyn Array>> = s
+        .values()
+        .iter()
+        .zip(fields)
+        .filter_map(|(a, mut f)| {
+            let b = if a.data_type() == &pl::ArrowDataType::Utf8 {
+                let conc = a.as_any().downcast_ref::<Utf8Array<i32>>().unwrap();
+                let res = utf8_to_large_utf8(conc);
+                f.data_type = ArrowDataType::LargeUtf8;
+                res.boxed()
+            } else {
+                a.to_boxed()
+            };
+            if let &pl::ArrowDataType::Map(..) = b.data_type() {
+                None
+            } else {
+                new_fields.push(f);
+                Some(unsafe { take_unchecked(b.as_ref(), &indices) })
+            }
+        })
+        .collect();
+    let validity = unsafe { take_validity(s.validity(), &indices) };
+    StructArray::new(pl::ArrowDataType::Struct(new_fields), brr, validity).boxed()
+}
+
 pub(crate) fn convert_array2(arr: Box<dyn Array>) -> Box<dyn Array> {
     let dt = arr.data_type();
+    if let pl::ArrowDataType::Dictionary(..) = dt {
+        return convert_dictionaries(arr);
+    }
+
     if dt == dt.to_logical_type() {
         arr
     } else {
