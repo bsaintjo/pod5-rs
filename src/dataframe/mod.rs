@@ -1,6 +1,12 @@
 //! `polars` DataFrame API for POD5 files
 //!
 //! This module provides utilities for interacting with POD5 tables using a DataFrame API from `polars`.
+
+// Polars notes
+// take_unchecked needs to support
+// 1. Map => casting to list array
+// 2. Smaller types, aka not Large*
+// 3. Support Extension data types, at least casting down to regular type
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use polars::{
@@ -13,20 +19,21 @@ use polars::{
 };
 use polars_arrow::{
     array::{
-        Array, BinaryArray, BooleanArray, DictionaryArray, FixedSizeBinaryArray, NullArray,
-        PrimitiveArray, StructArray, Utf8Array,
+        growable::{Growable, GrowableList},
+        Array, BinaryArray, BooleanArray, DictionaryArray, FixedSizeBinaryArray, ListArray,
+        MapArray, NullArray, PrimitiveArray, StructArray, Utf8Array,
     },
     bitmap::{Bitmap, MutableBitmap},
     compute::{
         cast::{
-            binary_large_to_binary, dictionary_to_values, fixed_size_binary_binary,
-            primitive_to_primitive, utf8_to_binary, utf8_to_large_utf8,
+            binary_large_to_binary, fixed_size_binary_binary, primitive_to_primitive,
+            utf8_to_large_utf8,
         },
         take::take_unchecked,
     },
     datatypes::Field,
     io::ipc::read::{read_file_metadata, FileReader},
-    types::Index,
+    types::{Index, Offset},
 };
 
 use crate::{error::Pod5Error, svb16::decode};
@@ -192,10 +199,7 @@ pub(crate) fn get_next_df(
     }
 }
 
-pub(crate) type TableReader = (
-    Vec<Field>,
-    polars_arrow::io::ipc::read::FileReader<Cursor<Vec<u8>>>,
-);
+pub(crate) type TableReader = (Vec<Field>, FileReader<Cursor<Vec<u8>>>);
 
 pub(crate) fn read_to_dataframe<R: Read + Seek>(
     offset: u64,
@@ -261,10 +265,9 @@ pub(crate) fn decompress_signal_series(
     Ok(Some(Series::new("decompressed", out)))
 }
 
-/// Copied from polars_arrow because it isn't exported
+// Copied from polars_arrow because it isn't exported
 ///
 /// Relevant code: https://docs.rs/polars-arrow/0.37.0/src/polars_arrow/compute/take/structure.rs.html#23
-#[inline]
 unsafe fn take_validity<I: Index>(
     validity: Option<&Bitmap>,
     indices: &PrimitiveArray<I>,
@@ -299,13 +302,17 @@ unsafe fn take_validity<I: Index>(
 // Relevant documentation:
 // https://docs.rs/polars-arrow/0.37.0/src/polars_arrow/compute/take/structure.rs.html#50
 // https://docs.rs/polars-arrow/0.37.0/src/polars_arrow/compute/take/mod.rs.html#72
-pub(crate) fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
+fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
     let arr_dict = arr.as_any().downcast_ref::<DictionaryArray<i16>>().unwrap();
     let pl::ArrowDataType::Struct(..) = arr_dict.values().data_type() else {
         return arr;
     };
     let indices = primitive_to_primitive::<_, i64>(arr_dict.keys(), &pl::ArrowDataType::Int64);
-    let s = arr_dict.values().as_any().downcast_ref::<StructArray>().unwrap();
+    let s = arr_dict
+        .values()
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .unwrap();
     let pl::ArrowDataType::Struct(fields) = s.data_type().clone() else {
         unreachable!()
     };
@@ -314,7 +321,7 @@ pub(crate) fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
         .values()
         .iter()
         .zip(fields)
-        .filter_map(|(a, mut f)| {
+        .map(|(a, mut f)| {
             let b = if a.data_type() == &pl::ArrowDataType::Utf8 {
                 let conc = a.as_any().downcast_ref::<Utf8Array<i32>>().unwrap();
                 let res = utf8_to_large_utf8(conc);
@@ -323,16 +330,68 @@ pub(crate) fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
             } else {
                 a.to_boxed()
             };
-            if let &pl::ArrowDataType::Map(..) = b.data_type() {
-                None
+
+            if let pl::ArrowDataType::Map(..) = b.data_type() {
+                let marr = b.as_any().downcast_ref::<MapArray>().unwrap();
+                let inner = marr.field().clone();
+                let ldt = ListArray::<i32>::default_datatype(inner.data_type().clone());
+                let lres = ListArray::<i32>::new(
+                    ldt,
+                    marr.offsets().clone(),
+                    inner,
+                    marr.validity().cloned(),
+                );
+                f.data_type = lres.data_type().clone();
+                new_fields.push(f);
+                unsafe { take_unchecked_list(&lres, &indices).to_boxed() }
             } else {
                 new_fields.push(f);
-                Some(unsafe { take_unchecked(b.as_ref(), &indices) })
+                unsafe { take_unchecked(b.as_ref(), &indices) }
             }
         })
         .collect();
     let validity = unsafe { take_validity(s.validity(), &indices) };
     StructArray::new(pl::ArrowDataType::Struct(new_fields), brr, validity).boxed()
+}
+
+unsafe fn take_unchecked_list<I: Offset, O: Index>(
+    values: &ListArray<I>,
+    indices: &PrimitiveArray<O>,
+) -> ListArray<I> {
+    let mut capacity = 0;
+    let arrays = indices
+        .values()
+        .iter()
+        .map(|index| {
+            let index = index.to_usize();
+            let slice = values.clone().sliced(index, 1);
+            capacity += slice.len();
+            slice
+        })
+        .collect::<Vec<ListArray<I>>>();
+
+    let arrays = arrays.iter().collect();
+
+    if let Some(validity) = indices.validity() {
+        let mut growable: GrowableList<I> = GrowableList::new(arrays, true, capacity);
+
+        for index in 0..indices.len() {
+            if validity.get_bit_unchecked(index) {
+                growable.extend(index, 0, 1);
+            } else {
+                growable.extend_validity(1)
+            }
+        }
+
+        growable.into()
+    } else {
+        let mut growable: GrowableList<I> = GrowableList::new(arrays, false, capacity);
+        for index in 0..indices.len() {
+            growable.extend(index, 0, 1);
+        }
+
+        growable.into()
+    }
 }
 
 pub(crate) fn convert_array2(arr: Box<dyn Array>) -> Box<dyn Array> {
@@ -354,25 +413,25 @@ pub(crate) fn convert_array2(arr: Box<dyn Array>) -> Box<dyn Array> {
                 let conc: &BooleanArray = arr.as_any().downcast_ref().unwrap();
                 conc.to_boxed()
             }
-            // ArrowDataType::Int8 => todo!(),
-            // ArrowDataType::Int16 => todo!(),
-            // ArrowDataType::Int32 => todo!(),
-            // ArrowDataType::Int64 => todo!(),
-            // ArrowDataType::UInt8 => todo!(),
-            // ArrowDataType::UInt16 => todo!(),
-            // ArrowDataType::UInt32 => todo!(),
-            // ArrowDataType::UInt64 => todo!(),
-            // ArrowDataType::Float16 => todo!(),
-            // ArrowDataType::Float32 => todo!(),
-            // ArrowDataType::Float64 => todo!(),
-            // ArrowDataType::Timestamp(_, _) => todo!(),
-            // ArrowDataType::Date32 => todo!(),
-            // ArrowDataType::Date64 => todo!(),
-            // ArrowDataType::Time32(_) => todo!(),
-            // ArrowDataType::Time64(_) => todo!(),
-            // ArrowDataType::Duration(_) => todo!(),
-            // ArrowDataType::Interval(_) => todo!(),
-            // ArrowDataType::Binary => todo!(),
+                // ArrowDataType::Boolean => todo!(),
+                // ArrowDataType::Int8 => todo!(),
+                // ArrowDataType::Int16 => todo!(),
+                // ArrowDataType::Int32 => todo!(),
+                // ArrowDataType::Int64 => todo!(),
+                // ArrowDataType::UInt8 => todo!(),
+                // ArrowDataType::UInt16 => todo!(),
+                // ArrowDataType::UInt32 => todo!(),
+                // ArrowDataType::UInt64 => todo!(),
+                // ArrowDataType::Float16 => todo!(),
+                // ArrowDataType::Float32 => todo!(),
+                // ArrowDataType::Float64 => todo!(),
+                // ArrowDataType::Timestamp(_, _) => todo!("{dt:?}"),
+                // ArrowDataType::Date32 => todo!(),
+                // ArrowDataType::Date64 => todo!(),
+                // ArrowDataType::Time32(_) => todo!(),
+                // ArrowDataType::Time64(_) => todo!(),
+                // ArrowDataType::Interval(_) => todo!(),
+                // ArrowDataType::Binary => todo!(),
             pl::ArrowDataType::FixedSizeBinary(_) => {
                 let conc: &FixedSizeBinaryArray = arr.as_any().downcast_ref().unwrap();
                 let conc = FixedSizeBinaryArray::new(
@@ -431,13 +490,14 @@ pub(crate) fn convert_array(arr: &dyn Array) -> Box<dyn Array> {
         // ArrowDataType::Float16 => todo!(),
         // ArrowDataType::Float32 => todo!(),
         // ArrowDataType::Float64 => todo!(),
-        // ArrowDataType::Timestamp(_, _) => todo!("{dt:?}"),
+        // ArrowDataType::Timestamp(_, ) => todo!(),
         // ArrowDataType::Date32 => todo!(),
-        // ArrowDataType::Date64 => todo!(),
+        pl::ArrowDataType::Date64 => todo!(),
         // ArrowDataType::Time32(_) => todo!(),
         // ArrowDataType::Time64(_) => todo!(),
         // ArrowDataType::Duration(_) => todo!(),
         pl::ArrowDataType::Interval(_) => todo!("{dt:?}"),
+        // ArrowDataType::Binary => todo!("{dt:?}"),
         // ArrowDataType::Binary => todo!("{dt:?}"),
         pl::ArrowDataType::FixedSizeBinary(_) => {
             let c1: &FixedSizeBinaryArray = arr.as_any().downcast_ref().unwrap();
@@ -464,7 +524,6 @@ pub(crate) fn convert_array(arr: &dyn Array) -> Box<dyn Array> {
         pl::ArrowDataType::Decimal256(_, _) => todo!("{dt:?}"),
         pl::ArrowDataType::Extension(_, _, _) => unreachable!(),
         pl::ArrowDataType::BinaryView => todo!("{dt:?}"),
-        // ArrowDataType::Utf8View => todo!(),
         _ => arr.to_boxed(),
     }
 }

@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use pico_args::Arguments;
