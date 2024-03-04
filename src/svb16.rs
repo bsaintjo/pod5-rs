@@ -8,7 +8,7 @@
 
 use std::io::{self, Cursor};
 
-use bitvec::{prelude::Msb0, slice::Iter, view::BitView};
+use bitvec::{prelude::Lsb0, slice::Iter, view::BitView};
 use delta_encoding::{DeltaDecoderExt, DeltaEncoderExt};
 use itertools::Itertools;
 use zigzag::ZigZag;
@@ -17,7 +17,7 @@ use zigzag::ZigZag;
 struct DecodeIter<'a> {
     count: usize,
     samples: usize,
-    bits: Iter<'a, u8, Msb0>,
+    bits: Iter<'a, u8, Lsb0>,
     idx: usize,
     data: &'a [u8],
 }
@@ -94,7 +94,7 @@ impl<I: Iterator<Item = u16>> Encoder<I> {
     fn encode(mut self) -> Vec<u8> {
         for chunk in &self.iter.chunks(8) {
             let mut ctrl_byte = 0u8;
-            let bits = ctrl_byte.view_bits_mut::<Msb0>();
+            let bits = ctrl_byte.view_bits_mut::<Lsb0>();
             for (x, mut code) in chunk.zip(bits.iter_mut()) {
                 if x > (u8::MAX as u16) {
                     *code = true;
