@@ -1,5 +1,7 @@
-workspace = { members = ["examples/find-all-reads"] }
-[package]
+[workspace]
+members = [ "examples/convert-to-slow5","examples/find-all-reads"]
+
+[workspace.package]
 name = "pod5"
 version = "0.1.0"
 edition = "2021"
@@ -13,7 +15,7 @@ categories = ["science", "parsing", "data-structures", "compression", "encoding"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
+[workspace.dependencies]
 # encode/decode of sizes in control bytes in svb
 bitvec = "1.0.1"
 delta-encoding = "0.4.0"
@@ -30,8 +32,8 @@ flatbuffers = "23.1.21"
 thiserror = "1.0.39"
 
 # DataFrame API
-polars-arrow = { version = "0.37.0", features = ["io_ipc", "compute_cast"] }
-polars = { version = "0.37.0", features = [
+polars-arrow = { version = "0.38.1", features = ["io_ipc", "compute_cast"] }
+polars = { version = "0.38.1", features = [
     "dtype-full",
     "dtype-array",
     "timezones",
