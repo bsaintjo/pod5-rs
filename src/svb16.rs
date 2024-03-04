@@ -151,7 +151,7 @@ mod test {
         let answer = [10u16, 1234, 20, 2345, 30];
 
         // answer in u8 format
-        let xs = [0b01010101u8, 10, 0xd2, 0x04, 20, 0x29, 0x09, 30];
+        let xs = [0b10101010u8, 10, 0xd2, 0x04, 20, 0x29, 0x09, 30];
         let (ctrl, data) = split_data(&xs, samples);
         let decoded = DecodeIter::new(ctrl, data, samples).collect::<Vec<_>>();
         assert_eq!(decoded, answer);
