@@ -49,3 +49,4 @@ log = "0.4.20"
 eyre = "0.6.8"
 # Testing small files by memmap
 memmap2 = "0.9.4"
+proptest = "1.4.0"

@@ -6,7 +6,7 @@
 //! encode the size, so every control byte encodes up to 8 values, instead of
 //! 4..
 
-use std::io::{self, Cursor};
+use std::io;
 
 use bitvec::{prelude::Lsb0, slice::Iter, view::BitView};
 use delta_encoding::{DeltaDecoderExt, DeltaEncoderExt};
@@ -111,11 +111,29 @@ impl<I: Iterator<Item = u16>> Encoder<I> {
     }
 }
 
+/// Performs VBZ compression
 /// delta -> zig-zag -> streamvbyte -> zstd
+///
+/// Warning
+/// The output nearly, but not exactly matches the implementation in ONT's pod5-file-format.
+/// The encoded output here will be slightly different in size. I suspect this is due to pod5-file-format
+/// allocating all the buffers ahead of time, which are slightly larger than absolutely needed. This implementation
+/// builds the data and control byte buffers iteratively and so contain the minimum number of bytes needed.
+/// I believe, but haven't confirmed, the output from this should still be compatible with pod5-file-format's
+/// decompressor, since the extra padding bytes won't change the resulting decoded values. Future work,
+/// may attempt to achieve this 1-to-1 compatibility.
 pub fn encode(uncompressed: &[i16]) -> io::Result<Vec<u8>> {
     let iter = uncompressed.iter().copied().deltas().map(ZigZag::encode);
     let svb = Encoder::new(iter).encode();
-    zstd::encode_all(Cursor::new(svb), 1)
+    // svb.extend_from_slice(&[0; 27]);
+    // let max_encoded = max_encoded_length(uncompressed.len());
+    // let max_zstd_compressed = zstd::zstd_safe::compress_bound(max_encoded);
+    // let mut dst = vec![0; max_zstd_compressed];
+    // zstd::encode_all(Cursor::new(svb), 1)
+    zstd::bulk::compress(&svb, 1)
+    // let compressed_size = zstd::zstd_safe::compress(&mut dst, &svb, 1).unwrap();
+    // dst.resize(compressed_size, 0);
+    // Ok(dst)
 }
 
 fn split_data(compressed: &[u8], count: usize) -> (&[u8], &[u8]) {
@@ -132,10 +150,15 @@ fn num_ctrl_bytes(count: usize) -> usize {
     (count >> 3) + (((count & 7) + 7) >> 3)
 }
 
+fn max_encoded_length(count: usize) -> usize {
+    num_ctrl_bytes(count) + (2 * count)
+}
+
 #[cfg(test)]
 mod test {
-
     use super::*;
+    use proptest::{arbitrary::any, prelude::proptest, prop_assert_eq};
+    use std::{fs::File, io::{Cursor, Read}};
 
     #[test]
     fn test_num_ctrl_bytes() {
@@ -161,5 +184,78 @@ mod test {
     fn test_roundtrip() {
         let nums = [10i16, 1234, 20, 2345, 30];
         assert_eq!(decode(&encode(&nums).unwrap(), nums.len()).unwrap(), nums);
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_round_trip(ref vec in any::<Vec<i16>>()) {
+            let len = vec.len();
+            let vec2 = decode(&encode(vec).unwrap(), len).unwrap();
+            prop_assert_eq!(vec, &vec2);
+        }
+    }
+
+    #[test]
+    fn test_zstd() {
+        let x = max_encoded_length(102400);
+        println!("max encoded: {x}");
+        println!("{:?}", zstd::zstd_safe::compress_bound(x));
+    }
+
+    #[test]
+    fn test_components() {
+        let mut compressed_file = File::open("extra/102400-compressed.signal").unwrap();
+        let mut compressed = Vec::new();
+        compressed_file.read_to_end(&mut compressed).unwrap();
+
+        let mut decompressed_file = File::open("extra/102400-decompressed.signal").unwrap();
+        let mut decompressed = String::new();
+        decompressed_file.read_to_string(&mut decompressed).unwrap();
+        let decompressed = decompressed
+            .split(',')
+            .map(|x| x.parse::<i16>().unwrap())
+            .collect::<Vec<_>>();
+
+        // Delta stage
+        let delta_encoded = decompressed.iter().cloned().deltas().collect::<Vec<_>>();
+
+        let d = zstd::decode_all(Cursor::new(&compressed)).unwrap();
+        let d: Vec<i16> = DecodeIter::from_compressed(&d, 102400)
+            .map(ZigZag::decode)
+            .collect::<Vec<_>>();
+        assert_eq!(delta_encoded, d);
+
+        // Zig-zag stage
+        let z_enc = decompressed
+            .iter()
+            .cloned()
+            .deltas()
+            .map(ZigZag::encode)
+            .collect::<Vec<_>>();
+        let z = zstd::decode_all(Cursor::new(&compressed)).unwrap();
+        let z: Vec<u16> = DecodeIter::from_compressed(&z, 102400).collect::<Vec<_>>();
+        assert_eq!(z_enc, z);
+    }
+
+    #[test]
+    fn test_compatibility() {
+        let mut compressed_file = File::open("extra/102400-compressed.signal").unwrap();
+        let mut compressed = Vec::new();
+        compressed_file.read_to_end(&mut compressed).unwrap();
+
+        let mut decompressed_file = File::open("extra/102400-decompressed.signal").unwrap();
+        let mut decompressed = String::new();
+        decompressed_file.read_to_string(&mut decompressed).unwrap();
+        let decompressed = decompressed
+            .split(',')
+            .map(|x| x.parse::<i16>().unwrap())
+            .collect::<Vec<_>>();
+
+        let d = decode(&compressed, 102400).unwrap();
+        // let e = encode(&decompressed).unwrap();
+        assert_eq!(decompressed, d);
+        // assert_eq!(&e[..10], &compressed[..10]);
+        // assert_eq!(e.len(), compressed.len());
+        // assert_eq!(&e[..10], &compressed[..10]);
     }
 }
