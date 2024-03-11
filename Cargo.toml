@@ -1,17 +1,26 @@
-# [workspace]
-# members = [ "examples/convert-to-slow5","examples/find-all-reads"]
+[workspace]
+members = ["examples/convert-to-slow5", "examples/find-all-reads"]
+
+[workspace.package]
+authors = ["Brandon Saint-Joh <saint-john@lbl.gov>"]
 
 [package]
 name = "pod5"
 version = "0.1.0"
 edition = "2021"
-authors = ["Brandon Saint-Joh <saint-john@lbl.gov>"]
+authors.workspace = true
 description = "Interacting with POD5 files in Rust."
 readme = "README.md"
 repository = "https:://github.com/bsaintjo/pod5-rs"
 license = "MIT OR Apache-2.0"
 keywords = ["nanopore", "genomics", "FAST5", "POD5", "sequencing"]
-categories = ["science", "parsing", "data-structures", "compression", "encoding"]
+categories = [
+    "science",
+    "parsing",
+    "data-structures",
+    "compression",
+    "encoding",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
