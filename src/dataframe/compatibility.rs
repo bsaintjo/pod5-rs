@@ -1,4 +1,4 @@
-use polars::datatypes::ArrowDataType;
+use polars::{datatypes::ArrowDataType, prelude::LargeListArray};
 
 use polars::prelude as pl;
 use polars_arrow::{
@@ -11,7 +11,7 @@ use polars_arrow::{
     compute::{
         cast::{
             binary_large_to_binary, fixed_size_binary_binary, primitive_to_primitive,
-            utf8_to_large_utf8,
+            utf8_to_large_utf8, utf8_to_utf8view,
         },
         take::take_unchecked,
     },
@@ -59,7 +59,12 @@ fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
     let pl::ArrowDataType::Struct(..) = arr_dict.values().dtype() else {
         return arr;
     };
-    let indices = primitive_to_primitive::<_, u32>(arr_dict.keys(), &pl::ArrowDataType::Int64);
+    // let indices = primitive_to_primitive::<_, u32>(arr_dict.keys(), &pl::ArrowDataType::Int64);
+    let indices: PrimitiveArray<u32> = arr_dict
+        .keys()
+        .iter()
+        .map(|x| x.map(|&a| a as u32))
+        .collect();
     let s = arr_dict
         .values()
         .as_any()
@@ -73,32 +78,41 @@ fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
         .values()
         .iter()
         .zip(fields)
-        .map(|(a, mut f)| {
+        .flat_map(|(a, mut f)| {
             let b = if a.dtype() == &pl::ArrowDataType::Utf8 {
                 let conc = a.as_any().downcast_ref::<Utf8Array<i32>>().unwrap();
-                let res = utf8_to_large_utf8(conc);
-                f.dtype = ArrowDataType::LargeUtf8;
+                let res = utf8_to_utf8view(conc);
+                f.dtype = ArrowDataType::Utf8View;
                 res.boxed()
             } else {
                 a.to_boxed()
             };
 
+            // TODO: Currently Map arrays are difficult to handle correctly
+            // The first solution in the uncommented code converted maps
+            // into a column of lists (aka tuples). This in conjunction with a list specific
+            // take_unchecked_list worked but as of polars-arrow 0.44.2 API changes have
+            // made it unsupported. For now, skip these datatypes and we will comeback later
+            // to resolve
             if let pl::ArrowDataType::Map(..) = b.dtype() {
-                let marr = b.as_any().downcast_ref::<MapArray>().unwrap();
-                let inner = marr.field().clone();
-                let ldt = ListArray::<i32>::default_datatype(inner.dtype().clone());
-                let lres = ListArray::<i32>::new(
-                    ldt,
-                    marr.offsets().clone(),
-                    inner,
-                    marr.validity().cloned(),
-                );
-                f.dtype = lres.dtype().clone();
-                new_fields.push(f);
-                unsafe { take_unchecked_list(&lres, &indices).to_boxed() }
+                // log::warn!("Arrow MapArrays are currently unsupported: skipping {b:?}");
+                // None
+                // let marr = b.as_any().downcast_ref::<MapArray>().unwrap();
+                // let sarr = marr.values_iter().collect();
+                // // map_array_to_struct_array(marr);
+                // let marr_offsets = marr.offsets().into();
+                // let inner = marr.field().clone();
+                // let ldt = ListArray::<i64>::default_datatype(inner.dtype().clone());
+                // let lres =
+                //     ListArray::<i64>::new(ldt, marr_offsets, inner, marr.validity().cloned());
+                // f.dtype = lres.dtype().clone();
+                // new_fields.push(f);
+                // Some(unsafe { take_unchecked(&lres, &indices).to_boxed() })
+                // Some(marr.values_iter().next().unwrap())
+                None
             } else {
                 new_fields.push(f);
-                unsafe { take_unchecked(b.as_ref(), &indices) }
+                Some(unsafe { take_unchecked(b.as_ref(), &indices) })
             }
         })
         .collect();
@@ -111,6 +125,28 @@ fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
         validity,
     )
     .boxed()
+}
+
+fn map_array_to_struct_array(b: &MapArray) -> Box<dyn Array> {
+    // let mut new_field = Vec::new();
+    for x in b.values_iter() {
+        println!("{x:?}");
+    }
+    todo!()
+    // let marr_offsets = marr.offsets().into();
+    // let inner = marr.field().clone();
+    // let ldt = ListArray::<i64>::default_datatype(inner.dtype().clone());
+    // let lres = ListArray::<i64>::new(ldt, marr_offsets, inner, marr.validity().cloned());
+
+    // f.dtype = lres.dtype().clone();
+    // new_fields.push(f);
+    // StructArray::new(
+    //     pl::ArrowDataType::Struct(new_fields),
+    //     brr[0].len(),
+    //     brr,
+    //     validity,
+    // )
+    // .boxed()
 }
 
 unsafe fn take_unchecked_list<I: Offset, O: Index>(
