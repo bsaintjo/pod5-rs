@@ -56,16 +56,16 @@ unsafe fn take_validity<I: Index>(
 // https://docs.rs/polars-arrow/0.37.0/src/polars_arrow/compute/take/mod.rs.html#72
 fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
     let arr_dict = arr.as_any().downcast_ref::<DictionaryArray<i16>>().unwrap();
-    let pl::ArrowDataType::Struct(..) = arr_dict.values().data_type() else {
+    let pl::ArrowDataType::Struct(..) = arr_dict.values().dtype() else {
         return arr;
     };
-    let indices = primitive_to_primitive::<_, i64>(arr_dict.keys(), &pl::ArrowDataType::Int64);
+    let indices = primitive_to_primitive::<_, u32>(arr_dict.keys(), &pl::ArrowDataType::Int64);
     let s = arr_dict
         .values()
         .as_any()
         .downcast_ref::<StructArray>()
         .unwrap();
-    let pl::ArrowDataType::Struct(fields) = s.data_type().clone() else {
+    let pl::ArrowDataType::Struct(fields) = s.dtype().clone() else {
         unreachable!()
     };
     let mut new_fields = Vec::with_capacity(fields.capacity());
@@ -74,26 +74,26 @@ fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
         .iter()
         .zip(fields)
         .map(|(a, mut f)| {
-            let b = if a.data_type() == &pl::ArrowDataType::Utf8 {
+            let b = if a.dtype() == &pl::ArrowDataType::Utf8 {
                 let conc = a.as_any().downcast_ref::<Utf8Array<i32>>().unwrap();
                 let res = utf8_to_large_utf8(conc);
-                f.data_type = ArrowDataType::LargeUtf8;
+                f.dtype = ArrowDataType::LargeUtf8;
                 res.boxed()
             } else {
                 a.to_boxed()
             };
 
-            if let pl::ArrowDataType::Map(..) = b.data_type() {
+            if let pl::ArrowDataType::Map(..) = b.dtype() {
                 let marr = b.as_any().downcast_ref::<MapArray>().unwrap();
                 let inner = marr.field().clone();
-                let ldt = ListArray::<i32>::default_datatype(inner.data_type().clone());
+                let ldt = ListArray::<i32>::default_datatype(inner.dtype().clone());
                 let lres = ListArray::<i32>::new(
                     ldt,
                     marr.offsets().clone(),
                     inner,
                     marr.validity().cloned(),
                 );
-                f.data_type = lres.data_type().clone();
+                f.dtype = lres.dtype().clone();
                 new_fields.push(f);
                 unsafe { take_unchecked_list(&lres, &indices).to_boxed() }
             } else {
@@ -103,7 +103,14 @@ fn convert_dictionaries(arr: Box<dyn Array>) -> Box<dyn Array> {
         })
         .collect();
     let validity = unsafe { take_validity(s.validity(), &indices) };
-    StructArray::new(pl::ArrowDataType::Struct(new_fields), brr, validity).boxed()
+    // StructArray::new(pl::ArrowDataType::Struct(new_fields), brr, validity).boxed()
+    StructArray::new(
+        pl::ArrowDataType::Struct(new_fields),
+        brr[0].len(),
+        brr,
+        validity,
+    )
+    .boxed()
 }
 
 unsafe fn take_unchecked_list<I: Offset, O: Index>(
@@ -147,7 +154,7 @@ unsafe fn take_unchecked_list<I: Offset, O: Index>(
 }
 
 pub(crate) fn convert_array2(arr: Box<dyn Array>) -> Box<dyn Array> {
-    let dt = arr.data_type();
+    let dt = arr.dtype();
     if let pl::ArrowDataType::Dictionary(..) = dt {
         return convert_dictionaries(arr);
     }
@@ -224,7 +231,7 @@ pub(crate) fn convert_array2(arr: Box<dyn Array>) -> Box<dyn Array> {
 
 /// Convert Array into a compatible
 pub(crate) fn convert_array(arr: &dyn Array) -> Box<dyn Array> {
-    let mut dt = arr.data_type().clone();
+    let mut dt = arr.dtype().clone();
     if let pl::ArrowDataType::Extension(_, pt, _) = dt {
         dt = *pt;
     }

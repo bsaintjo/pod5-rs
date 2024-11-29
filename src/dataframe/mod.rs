@@ -13,7 +13,7 @@ use polars::{
     error::PolarsError,
     frame::DataFrame,
     lazy::{dsl::GetOutput, frame::IntoLazy},
-    prelude::{self as pl, NamedFrom},
+    prelude::{self as pl, Column, NamedFrom},
     series::Series,
 };
 use polars_arrow::{
@@ -88,11 +88,11 @@ impl SignalDataFrameIter {
         let mut run_info_buf = Cursor::new(buf);
         let metadata =
             read_file_metadata(&mut run_info_buf).map_err(|_| Pod5Error::SignalTableMissing)?;
-        let fields = metadata.schema.fields.clone();
+        let fields = metadata.schema.clone();
 
         let table_reader = FileReader::new(run_info_buf, metadata, None, None);
         Ok(Self {
-            fields,
+            fields: fields.iter().map(|f| f.1).cloned().collect(),
             table_reader,
         })
     }
@@ -201,7 +201,7 @@ pub(crate) fn read_to_dataframe<R: Read + Seek>(
     file.read_exact(&mut run_info_buf)?;
     let mut run_info_buf = Cursor::new(run_info_buf);
     let metadata = read_file_metadata(&mut run_info_buf).map_err(|_| err)?;
-    let fields = metadata.schema.fields.clone();
+    let fields = metadata.schema.iter().map(|f| f.1).cloned().collect();
 
     let signal_table = FileReader::new(run_info_buf, metadata, None, None);
     Ok((fields, signal_table))
@@ -220,27 +220,30 @@ pub(crate) fn combine_signal_rows(series: Series) -> Result<Option<Series>, Pola
                 acc
             }
         });
-    Ok(Some(Series::new(series.name(), &xs)))
+    Ok(Some(Series::new(series.name().clone(), &xs)))
 }
 
 pub(crate) fn parse_uuid_from_read_id(
-    series: pl::Series,
-) -> Result<Option<pl::Series>, PolarsError> {
+    series: pl::Column,
+) -> Result<Option<pl::Column>, PolarsError> {
     let read_ids = series
         .binary()
         .unwrap()
         .into_iter()
         .map(|bs: Option<&[u8]>| bs.map(|bbs| uuid::Uuid::from_slice(bbs).unwrap().to_string()))
         .collect::<Vec<_>>();
-    Ok(Some(Series::new(series.name(), read_ids)))
+    Ok(Some(Column::Series(Series::new(
+        series.name().clone(),
+        read_ids,
+    ))))
 }
 
 pub(crate) fn decompress_signal_series(
-    sample_signal: Series,
-) -> Result<Option<Series>, PolarsError> {
-    let sample_signal = sample_signal.struct_().unwrap();
-    let sample = sample_signal.fields()[0].u32().unwrap();
-    let signal = sample_signal.fields()[1].binary().unwrap();
+    sample_signal: Column,
+) -> Result<Option<Column>, PolarsError> {
+    let sample_signal = sample_signal.struct_().unwrap().fields_as_series();
+    let sample = sample_signal[0].u32().unwrap();
+    let signal = sample_signal[1].binary().unwrap();
     let out = sample
         .into_iter()
         .zip(signal)
@@ -251,5 +254,8 @@ pub(crate) fn decompress_signal_series(
             Series::from_iter(decoded)
         })
         .collect::<Vec<_>>();
-    Ok(Some(Series::new("decompressed", out)))
+    Ok(Some(Column::Series(Series::new(
+        "decompressed".into(),
+        out,
+    ))))
 }

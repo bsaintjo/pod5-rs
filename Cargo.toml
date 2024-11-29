@@ -32,17 +32,17 @@ zigzag = "0.1.0"
 zstd = "0.13.0"
 
 # chunking control bytes during decoding
-itertools = "0.12.1"
+itertools = "0.13.0"
 
 # Parsing footer schema
-flatbuffers = "23.1.21"
+flatbuffers = "24.3.25"
 
 # Error handling
-thiserror = "1.0.39"
+thiserror = "2.0.3"
 
 # DataFrame API
-polars-arrow = { version = "0.37.0", features = ["io_ipc", "compute_cast"] }
-polars = { version = "0.37.0", features = [
+polars-arrow = { version = "0.44.2", features = ["io_ipc", "compute_cast"] }
+polars = { version = "0.44.2", features = [
     "dtype-full",
     "dtype-array",
     "timezones",
@@ -57,5 +57,5 @@ log = "0.4.20"
 [dev-dependencies]
 eyre = "0.6.8"
 # Testing small files by memmap
-memmap2 = "0.9.4"
+memmap2 = "0.9.5"
 proptest = "1.4.0"

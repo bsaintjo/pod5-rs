@@ -136,18 +136,17 @@ fn to_dataframe<R: Read + Seek>(efile: &EmbeddedFile, mut file: R) -> Result<(),
     file.seek(SeekFrom::Start(offset))?;
     file.read_exact(&mut run_info_buf)?;
     let mut run_info_buf = Cursor::new(run_info_buf);
-    let metadata = read_file_metadata(&mut run_info_buf)
-        .map_err(|_| Pod5Error::SignalTableMissing)?;
-    let fields = metadata.schema.fields.clone();
+    let metadata =
+        read_file_metadata(&mut run_info_buf).map_err(|_| Pod5Error::SignalTableMissing)?;
+    let fields = metadata.schema.clone();
 
-    let signal_table =
-        FileReader::new(run_info_buf, metadata, None, None);
+    let signal_table = FileReader::new(run_info_buf, metadata.clone(), None, None);
     for table in signal_table {
         if let Ok(chunk) = table {
             let mut acc = Vec::new();
             for (arr, f) in chunk.arrays().iter().zip(fields.iter()) {
                 let arr = convert_array(arr.as_ref());
-                let s = polars::prelude::Series::try_from((f, arr));
+                let s = polars::prelude::Series::try_from((f.1, arr));
                 acc.push(s.unwrap());
             }
 
@@ -171,7 +170,9 @@ mod tests {
     use polars_arrow::io::ipc::read::read_file_metadata;
 
     use super::*;
-    use crate::{dataframe::compatibility::convert_array2, footer_generated::minknow::reads_format::Footer};
+    use crate::{
+        dataframe::compatibility::convert_array2, footer_generated::minknow::reads_format::Footer,
+    };
 
     #[test]
     fn test_pod5() -> eyre::Result<()> {
@@ -223,7 +224,7 @@ mod tests {
 
         let mut signal_buf = Cursor::new(signal_buf);
         let metadata = polars_arrow::io::ipc::read::read_file_metadata(&mut signal_buf)?;
-        let fields = metadata.schema.fields.clone();
+        let fields = metadata.schema.clone();
         println!("metadata schema: {:?}", &metadata.schema);
         println!("metadata ipc schema: {:?}", &metadata.ipc_schema);
 
@@ -234,7 +235,7 @@ mod tests {
                 let mut acc = Vec::new();
                 for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
                     let arr = convert_array2(arr);
-                    let s = polars::prelude::Series::try_from((f, arr));
+                    let s = polars::prelude::Series::try_from((f.1, arr));
                     acc.push(s.unwrap());
                 }
 
