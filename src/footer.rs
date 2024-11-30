@@ -86,7 +86,7 @@ impl ParsedFooter {
         )?))
     }
 
-    pub(crate) fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, Pod5Error> {
+    pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, Pod5Error> {
         reader.rewind()?;
         // let file_size = reader.stream_len()?;
         // let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;

@@ -1,5 +1,9 @@
 [workspace]
-members = ["examples/convert-to-slow5", "examples/find-all-reads"]
+members = [
+    "examples/arrow-example",
+    "examples/convert-to-slow5",
+    "examples/find-all-reads",
+]
 
 [workspace.package]
 authors = ["Brandon Saint-Joh <saint-john@lbl.gov>"]

@@ -14,8 +14,8 @@ use crate::dataframe::compatibility::convert_array;
 
 pub mod dataframe;
 pub mod error;
-mod footer;
-mod footer_generated;
+pub mod footer;
+pub mod footer_generated;
 pub mod reader;
 pub mod svb16;
 
