@@ -64,6 +64,11 @@ impl<'a> Iterator for DecodeIter<'a> {
 }
 
 /// zstd -> streamvbyte -> zig-zag -> delta
+/// Can panic if the compressed array doesn't follow the SVB16 specification.
+///
+/// When running on compressed signal data from a signal column in a POD5 file,
+/// use `decode` on the individual rows. If you try to combine the compressed signal
+/// across multiple rows that correspond to a signal read this function will panic.
 pub fn decode(compressed: &[u8], count: usize) -> io::Result<Vec<i16>> {
     let compressed = zstd::decode_all(compressed)?;
     Ok(DecodeIter::from_compressed(&compressed, count)
@@ -158,7 +163,10 @@ fn max_encoded_length(count: usize) -> usize {
 mod test {
     use super::*;
     use proptest::{arbitrary::any, prelude::proptest, prop_assert_eq};
-    use std::{fs::File, io::{Cursor, Read}};
+    use std::{
+        fs::File,
+        io::{Cursor, Read},
+    };
 
     #[test]
     fn test_num_ctrl_bytes() {

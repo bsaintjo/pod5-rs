@@ -9,17 +9,17 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(crate) struct Table {
+pub struct Table {
     offset: usize,
     length: usize,
 }
 
 impl Table {
-    pub(crate) fn offset(&self) -> usize {
+    pub fn offset(&self) -> usize {
         self.offset
     }
 
-    pub(crate) fn length(&self) -> usize {
+    pub fn length(&self) -> usize {
         self.length
     }
 }
@@ -28,7 +28,7 @@ impl Table {
 pub struct RunInfoTable(Table);
 
 #[derive(Debug)]
-pub(crate) struct ReadTable(Table);
+pub struct ReadTable(Table);
 
 impl AsRef<Table> for ReadTable {
     fn as_ref(&self) -> &Table {
@@ -37,7 +37,7 @@ impl AsRef<Table> for ReadTable {
 }
 
 #[derive(Debug)]
-pub(crate) struct SignalTable(Table);
+pub struct SignalTable(Table);
 
 impl AsRef<Table> for SignalTable {
     fn as_ref(&self) -> &Table {
@@ -72,14 +72,14 @@ impl ParsedFooter {
         })
     }
 
-    pub(crate) fn read_table(&self) -> Result<ReadTable, Pod5Error> {
+    pub fn read_table(&self) -> Result<ReadTable, Pod5Error> {
         Ok(ReadTable(self.find_table(
             ContentType::ReadsTable,
             Pod5Error::ReadTableMissing,
         )?))
     }
 
-    pub(crate) fn signal_table(&self) -> Result<SignalTable, Pod5Error> {
+    pub fn signal_table(&self) -> Result<SignalTable, Pod5Error> {
         Ok(SignalTable(self.find_table(
             ContentType::SignalTable,
             Pod5Error::SignalTableMissing,

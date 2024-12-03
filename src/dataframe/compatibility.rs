@@ -9,10 +9,7 @@ use polars_arrow::{
     },
     bitmap::{Bitmap, MutableBitmap},
     compute::{
-        cast::{
-            binary_large_to_binary, fixed_size_binary_binary, primitive_to_primitive,
-            utf8_to_large_utf8, utf8_to_utf8view,
-        },
+        cast::{binary_large_to_binary, fixed_size_binary_binary, utf8_to_utf8view},
         take::take_unchecked,
     },
     types::{Index, Offset},
