@@ -1,5 +1,10 @@
 # pod5-rs
 
+[![stable][stability-badge]][stability-url]
+
+[stability-badge]: https://img.shields.io/badge/stability-experimental-orange.svg
+[stability-url]: https://github.com/mkenney/software-guides/blob/master/STABILITY-BADGES.md#experimental
+
 Experimental library for interacting with [POD5 files](https://github.com/nanoporetech/pod5-file-format) in Rust.
 
 ## Motivation: Dataframes for POD5 files
@@ -10,7 +15,7 @@ This library performs the necessary casting in order to use `polars` on POD5 Apa
 
 ## Example: Read out read IDs and convert to UUID
 
-### Note: API is experimental and ex
+### Note: API is experimental and expect breaking changes. If there you are interested in using or having additional features, feel free to contact
 
 ```rust
 
@@ -65,6 +70,16 @@ shape: (4, 21)
 - [ ] Optimize decompression
   - [ ] Switch Zig-zag encoding dependency
   - [ ] Try `varint-rs`, `varint-simd`, etc.
+
+## Known issues
+
+### Compressed output differs, but uncompressed output is the same
+
+If you are trying validate this library and compare the compressed array from here to the official implementation, you will find the arrays aren't exactly the same. However, from my preliminary tests, the decompressed output should match. I believe this issue is due to how the buffer is allocated, as this implementation iteratively builds up the compressed array, whereas the official implementation preallocates the array based on expectations on the size of the compressed output. If you find otherwise, or would like to help on this front, please open a GitHub issue.
+
+### Dataframes can drop certain types of columns
+
+Certain types of columns in the a POD5 Arrow file, such as map arrays, are not supported by polars at this point. For now, some of these columns are dropped and logging will inform when these occur. There are some ways around this, and if there is a column(s) you'd like for the DataFrame API to be able to support, please open a GitHub issue.
 
 ## License
 
