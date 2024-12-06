@@ -18,6 +18,7 @@ pub mod footer;
 pub mod footer_generated;
 pub mod reader;
 pub mod svb16;
+mod arrow;
 
 // #[derive(Debug, Clone, PartialEq, Eq)]
 // struct SignalUuid(Vec<u8>);
@@ -158,6 +159,9 @@ fn to_dataframe<R: Read + Seek>(efile: &EmbeddedFile, mut file: R) -> Result<(),
     }
     Ok(())
 }
+
+#[cfg(doctest)]
+doc_comment::doctest!("../README.md", readme);
 
 #[cfg(test)]
 mod tests {

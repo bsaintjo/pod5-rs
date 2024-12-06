@@ -42,7 +42,7 @@ itertools = "0.13.0"
 flatbuffers = "24.3.25"
 
 # Error handling
-thiserror = "2.0.3"
+thiserror = "2.0.4"
 
 # DataFrame API
 polars-arrow = { version = "0.44.2", features = ["io_ipc", "compute_cast"] }
@@ -56,9 +56,11 @@ polars = { version = "0.44.2", features = [
 # Parsing read ids
 uuid = "1.7.0"
 log = "0.4.20"
+arrow = "53.3.0"
 
 
 [dev-dependencies]
+doc-comment = "0.3.3"
 eyre = "0.6.8"
 # Testing small files by memmap
 memmap2 = "0.9.5"
