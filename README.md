@@ -7,6 +7,14 @@
 
 Experimental library for interacting with [POD5 files](https://github.com/nanoporetech/pod5-file-format) in Rust.
 
+## Installation
+
+To use this crate in your project, run:
+
+```bash
+cargo add --git https://github.com/bsaintjo/pod5-rs
+```
+
 ## Motivation: Dataframes for POD5 files
 
 Major goals here are to explore combining POD5 files with `polars` DataFrame API. A POD5 file is essentially multiple Apache Arrow files stitched together using flatbuffers. Since `polars` has native support for Apache Arrow files, we should be able to treat the POD5 Arrow components as Dataframes and leverage all the API provided by `polars` to manipulate these.
@@ -30,7 +38,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         let df = read_df
             .parse_read_ids("uuid")? // Convience method to parse read ID bytes into UUID
             .into_inner() // Extract inner polars DatFrame, get full access to API
-            .drop("read_id")? // Drop the read since we don't need it anymore
+            .drop("read_id")? // Drop the column since we already parsed it
             .head(Some(4)); // Limit output to fit into example
         println!("{df:?}");
     }
@@ -57,7 +65,7 @@ shape: (4, 21)
 ## Roadmap
 
 - [ ] Convienence/examples for conversion to SLOW5/BLOW5
-- [ ] VBZ De/Compression
+- [ ] VBZ de/compression
   - [x] Decompression
   - [ ] Compression (works but isn't exact?)
 - [ ] DataFrame for Signal Table
