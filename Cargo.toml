@@ -60,6 +60,7 @@ arrow = "53.3.0"
 
 
 [dev-dependencies]
+polars-compute = { version = "0.45.1", features = ["cast"] }
 doc-comment = "0.3.3"
 eyre = "0.6.8"
 # Testing small files by memmap
