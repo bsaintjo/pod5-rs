@@ -29,10 +29,22 @@ pub struct RunInfoTable(Table);
 
 #[derive(Debug)]
 pub struct ReadTable(Table);
-
-impl AsRef<Table> for ReadTable {
-    fn as_ref(&self) -> &Table {
+impl ReadTable {
+    pub fn as_ref(&self) -> &Table {
         &self.0
+    }
+
+    pub fn read_to_buf<R: Read + Seek>(
+        &self,
+        reader: &mut R,
+        buf: &mut [u8],
+    ) -> Result<(), io::Error> {
+        let offset = self.0.offset() as u64;
+        let length = self.0.length() as u64;
+
+        reader.seek(SeekFrom::Start(offset))?;
+        reader.read_exact(buf)?;
+        Ok(())
     }
 }
 
@@ -40,7 +52,11 @@ impl AsRef<Table> for ReadTable {
 pub struct SignalTable(Table);
 
 impl SignalTable {
-    pub fn read_to_buf<R: Read + Seek>(&self, reader: &mut R, buf: &mut [u8]) -> Result<(), io::Error> {
+    pub fn read_to_buf<R: Read + Seek>(
+        &self,
+        reader: &mut R,
+        buf: &mut [u8],
+    ) -> Result<(), io::Error> {
         let offset = self.0.offset() as u64;
         let length = self.0.length() as u64;
 
