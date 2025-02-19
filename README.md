@@ -21,7 +21,7 @@ Major goals here are to explore combining POD5 files with `polars` DataFrame API
 
 This library performs the necessary casting in order to use `polars` on POD5 Apache Arrow contents. It provides a few convience functions for common operations, such as decompressing signal data, converting read ids into strings, etc. However, `polars` is re-exported to give full access to the DataFrame API.
 
-## Example: Read out read IDs and convert to UUID
+## Example: Print read IDs, signal data, and number of samples
 
 ### Note: API is experimental and expect breaking changes. If there you are interested in using or having additional features, feel free to contact
 
@@ -34,14 +34,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     let path = "../extra/multi_fast5_zip_v3.pod5";
     let file = File::open(path)?;
     let mut reader = Reader::from_reader(file)?;
-    for read_df in reader.read_dfs()?.flatten() {
-        let df = read_df
-            .parse_read_ids("uuid")? // Convience method to parse read ID bytes into UUID
-            .into_inner() // Extract inner polars DatFrame, get full access to API
-            .drop("read_id")? // Drop the column since we already parsed it
-            .head(Some(4)); // Limit output to fit into example
-        println!("{df:?}");
-    }
+    let calibration = reader.read_dfs()?.into_calibration();
+    let signal_df = reader.signal_dfs()?.flatten().next().unwrap();
+    println!("{:?}", signal_df.to_picoamps(&calibration));
     Ok(())
 }
 ```
@@ -49,22 +44,29 @@ fn run() -> Result<(), Box<dyn Error>> {
 Output:
 
 ```text
-shape: (4, 21)
-┌─────────────┬─────────────┬─────────┬───────────────┬───┬────────────┬───────────────────┬─────────────────────────────────┬─────────────────────────────────┐
-│ signal      ┆ read_number ┆ start   ┆ median_before ┆ … ┆ end_reason ┆ end_reason_forced ┆ run_info                        ┆ uuid                            │
-│ ---         ┆ ---         ┆ ---     ┆ ---           ┆   ┆ ---        ┆ ---               ┆ ---                             ┆ ---                             │
-│ list[u64]   ┆ u32         ┆ u64     ┆ f32           ┆   ┆ cat        ┆ bool              ┆ cat                             ┆ str                             │
-╞═════════════╪═════════════╪═════════╪═══════════════╪═══╪════════════╪═══════════════════╪═════════════════════════════════╪═════════════════════════════════╡
-│ [0, 1]      ┆ 1093        ┆ 4534321 ┆ 183.107742    ┆ … ┆ unknown    ┆ false             ┆ a08e850aaa44c8b56765eee10b386f… ┆ 0000173c-bf67-44e7-9a9c-1ad0bc… │
-│ [2]         ┆ 75          ┆ 122095  ┆ 174.630371    ┆ … ┆ unknown    ┆ false             ┆ a08e850aaa44c8b56765eee10b386f… ┆ 002fde30-9e23-4125-9eae-d112c1… │
-│ [3, 4, … 6] ┆ 1053        ┆ 4347870 ┆ 193.573578    ┆ … ┆ unknown    ┆ false             ┆ a08e850aaa44c8b56765eee10b386f… ┆ 006d1319-2877-4b34-85df-34de72… │
-│ [7, 8]      ┆ 657         ┆ 7231572 ┆ 194.65097     ┆ … ┆ unknown    ┆ false             ┆ a08e850aaa44c8b56765eee10b386f… ┆ 00728efb-2120-4224-87d8-580fbb… │
-└─────────────┴─────────────┴─────────┴───────────────┴───┴────────────┴───────────────────┴─────────────────────────────────┴─────────────────────────────────┘
+SignalDataFrame(shape: (22, 3)
+┌─────────────────────────────────┬─────────────────────────────────┬─────────┐
+│ minknow.uuid                    ┆ minknow.vbz                     ┆ samples │
+│ ---                             ┆ ---                             ┆ ---     │
+│ str                             ┆ list[f32]                       ┆ u32     │
+╞═════════════════════════════════╪═════════════════════════════════╪═════════╡
+│ 0000173c-bf67-44e7-9a9c-1ad0bc… ┆ [68.796082, 68.620575, … 64.75… ┆ 102400  │
+│ 0000173c-bf67-44e7-9a9c-1ad0bc… ┆ [65.110573, 74.587585, … 58.61… ┆ 21227   │
+│ 002fde30-9e23-4125-9eae-d112c1… ┆ [111.618126, 67.567574, … 66.1… ┆ 37440   │
+│ 006d1319-2877-4b34-85df-34de72… ┆ [101.263618, 68.971581, … 70.2… ┆ 102400  │
+│ 006d1319-2877-4b34-85df-34de72… ┆ [73.359085, 69.673576, … 66.33… ┆ 102400  │
+│ …                               ┆ …                               ┆ …       │
+│ 008ed3dc-86c2-452f-b107-6877a4… ┆ [103.194115, 54.580563, … 60.1… ┆ 14510   │
+│ 00919556-e519-4960-8aa5-c2dfa0… ┆ [93.541603, 91.611107, … 73.35… ┆ 9885    │
+│ 00925f34-6baf-47fc-b40c-22591e… ┆ [82.660591, 64.057571, … 72.30… ┆ 102400  │
+│ 00925f34-6baf-47fc-b40c-22591e… ┆ [60.723068, 64.057571, … 70.72… ┆ 33970   │
+│ 009dc9bd-c5f4-487b-ba4c-b9ce7e… ┆ [98.280113, 60.723068, … 52.65… ┆ 15643   │
+└─────────────────────────────────┴─────────────────────────────────┴─────────┘)
 ```
 
 ## Roadmap
 
-- [ ] Convienence/examples for conversion to SLOW5/BLOW5
+- [ ] Convenience/examples for conversion to SLOW5/BLOW5
 - [ ] VBZ de/compression
   - [x] Decompression
   - [ ] Compression (works but isn't exact?)

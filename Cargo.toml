@@ -51,6 +51,7 @@ polars = { version = "0.44.2", features = [
     "dtype-array",
     "timezones",
     "lazy",
+    "list_arithmetic"
 ] }
 
 # Parsing read ids

@@ -54,6 +54,14 @@ where
         let iter = ReadDataFrameIter::new(offset, length, &mut self.reader)?;
         Ok(iter)
     }
+
+    pub fn run_info_dfs(&mut self) -> Result<ReadDataFrameIter, Pod5Error> {
+        let table = self.footer.run_info_table()?;
+        let offset = table.as_ref().offset() as u64;
+        let length = table.as_ref().length() as u64;
+        let iter = ReadDataFrameIter::new(offset, length, &mut self.reader)?;
+        Ok(iter)
+    }
 }
 
 #[cfg(test)]

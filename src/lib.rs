@@ -4,106 +4,20 @@ use std::{
     io::{self, Cursor, Read, Seek, SeekFrom},
 };
 
+use dataframe::compatibility::array_to_series;
 use error::Pod5Error;
 use footer_generated::minknow::reads_format::EmbeddedFile;
 pub use polars;
 pub use polars_arrow;
 use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
 
-use crate::dataframe::compatibility::convert_array;
-
+mod arrow;
 pub mod dataframe;
 pub mod error;
 pub mod footer;
 pub mod footer_generated;
 pub mod reader;
 pub mod svb16;
-mod arrow;
-
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// struct SignalUuid(Vec<u8>);
-
-// impl ArrowField for SignalUuid {
-//     type Type = Self;
-
-//     fn data_type() -> arrow2::datatypes::DataType {
-//         arrow2::datatypes::DataType::Extension(
-//             "minknow.uuid".to_string(),
-//             Box::new(arrow2::datatypes::DataType::FixedSizeBinary(16)),
-//             Some("".to_string()),
-//         )
-//     }
-// }
-
-// impl ArrowDeserialize for SignalUuid {
-//     type ArrayType = arrow2::array::FixedSizeBinaryArray;
-
-//     fn arrow_deserialize(
-//         v: <&Self::ArrayType as IntoIterator>::Item,
-//     ) -> Option<<Self as ArrowField>::Type> {
-//         v.map(|t| SignalUuid(t.to_vec()))
-//     }
-// }
-
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// struct SignalVbz(Vec<u8>);
-
-// impl ArrowField for SignalVbz {
-//     type Type = Self;
-
-//     fn data_type() -> arrow2::datatypes::DataType {
-//         arrow2::datatypes::DataType::Extension(
-//             "minknow.vbz".to_string(),
-//             Box::new(arrow2::datatypes::DataType::LargeBinary),
-//             Some("".to_string()),
-//         )
-//     }
-// }
-
-// impl ArrowDeserialize for SignalVbz {
-//     type ArrayType = arrow2::array::BinaryArray<i64>;
-
-//     fn arrow_deserialize(
-//         v: <&Self::ArrayType as IntoIterator>::Item,
-//     ) -> Option<<Self as ArrowField>::Type> {
-//         v.map(|t| SignalVbz(t.to_vec()))
-//     }
-// }
-
-// #[derive(Debug, Clone, PartialEq, Eq, ArrowDeserialize)]
-// struct SignalUncompressed(Vec<i16>);
-
-// impl ArrowField for SignalUncompressed {
-//     type Type = Self;
-
-//     fn data_type() -> arrow2::datatypes::DataType {
-//         arrow2::datatypes::DataType::LargeList(Box::new(arrow2::datatypes::Field::new(
-//             "signal",
-//             arrow2::datatypes::DataType::Int16,
-//             true,
-//         )))
-//     }
-// }
-
-// #[derive(Debug, Clone, PartialEq, ArrowField, ArrowDeserialize)]
-// struct SignalRow {
-//     read_id: Option<SignalUuid>,
-//     signal: Option<SignalVbz>,
-//     samples: Option<u32>,
-// }
-
-// struct SignalRowRef<'a> {
-//     read_id: &'a [Option<SignalUuid>],
-//     signal: &'a [Option<SignalVbz>],
-//     samples: &'a [Option<u32>],
-// }
-
-// impl SignalRow {
-//     fn schema() -> Schema {
-//         let dt = Self::data_type();
-//         Schema::from(vec![arrow2::datatypes::Field::new("test", dt, false)])
-//     }
-// }
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
@@ -146,13 +60,18 @@ fn to_dataframe<R: Read + Seek>(efile: &EmbeddedFile, mut file: R) -> Result<(),
         if let Ok(chunk) = table {
             let mut acc = Vec::new();
             for (arr, f) in chunk.arrays().iter().zip(fields.iter()) {
-                let arr = convert_array(arr.as_ref());
-                let s = polars::prelude::Series::try_from((f.1, arr));
-                acc.push(s.unwrap());
+                // let arr = convert_array(arr.as_ref());
+                // let s = polars::prelude::Series::try_from((f.1, arr));
+                // acc.push(s.unwrap());
+                // if let Some(s) = array_to_series(f.1, arr.clone()) {
+                //     acc.push(s);
+                // }
+                let s = array_to_series(f.1, arr.clone());
+                acc.push(s);
             }
 
             let df = polars::prelude::DataFrame::from_iter(acc.into_iter());
-            println!("runinfo {df}");
+            println!("{df}");
         } else {
             println!("Error read table!")
         }
@@ -175,8 +94,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        dataframe::compatibility::convert_array2, footer_generated::minknow::reads_format::Footer,
+        dataframe::compatibility::array_to_series, footer_generated::minknow::reads_format::Footer,
     };
+
 
     #[test]
     fn test_pod5() -> eyre::Result<()> {
@@ -238,9 +158,8 @@ mod tests {
             if let Ok(chunk) = table {
                 let mut acc = Vec::new();
                 for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
-                    let arr = convert_array2(arr);
-                    let s = polars::prelude::Series::try_from((f.1, arr));
-                    acc.push(s.unwrap());
+                    let s = array_to_series(f.1, arr);
+                    acc.push(s);
                 }
 
                 let df = polars::prelude::DataFrame::from_iter(acc.into_iter());
@@ -249,6 +168,8 @@ mod tests {
                 println!("Error!")
             }
         }
+        let read_efile = embedded.get(0);
+        to_dataframe(&read_efile, &file).unwrap();
 
         let read_efile = embedded.get(2);
         to_dataframe(&read_efile, &file).unwrap();
@@ -258,91 +179,6 @@ mod tests {
 
         Ok(())
     }
-
-    // #[test]
-    // fn test_read_footer() -> eyre::Result<()> {
-    //     let path = "extra/multi_fast5_zip_v3.pod5";
-    //     let mut file = File::open(path)?;
-    //     let data = read_footer(&file)?;
-    //     let footer = root::<Footer>(&data)?;
-    //     println!("footer: {footer:?}");
-    //     let embedded = footer.contents().unwrap();
-    //     let efile = embedded.get(0);
-    //     let offset = efile.offset() as u64;
-    //     let length = efile.length() as u64;
-    //     let mut signal_buf = Vec::new();
-    //     signal_buf.resize(length as usize, 0x0);
-    //     file.seek(SeekFrom::Start(offset))?;
-    //     file.read_exact(&mut signal_buf)?;
-
-    //     let mut signal_buf = Cursor::new(signal_buf);
-    //     let metadata = read_file_metadata(&mut signal_buf)?;
-    //     // println!("from metadata: {:?}\n", metadata.schema);
-    //     // println!("from SignalRow: {:?}\n", SignalRow::schema());
-    //     let signal_table = FileReader::new(signal_buf, metadata, None, None);
-    //     println!("from signal table: {:?}\n", signal_table.schema());
-
-    //     let read_efile = embedded.get(2);
-    //     let offset = read_efile.offset() as u64;
-    //     let length = read_efile.length() as u64;
-    //     let mut read_buf = Vec::new();
-    //     read_buf.resize(length as usize, 0x0);
-    //     file.seek(SeekFrom::Start(offset))?;
-    //     file.read_exact(&mut read_buf)?;
-    //     // let mut read_buf = Cursor::new(read_buf);
-
-    //     // let metadata = read_file_metadata(&mut read_buf)?;
-    //     // let mut read_table = FileReader::new(read_buf, metadata, None, None);
-    //     // println!("from read table: {:?}\n", read_table.schema());
-    //     // let chunk = read_table.next().unwrap().unwrap();
-    //     // let arrs = chunk.arrays();
-    //     // let num_samples_arr = arrs[12].as_ref();
-    //     // println!("num samples {:?}", num_samples_arr.data_type());
-    //     // let num_samples: Vec<u64> = num_samples_arr.try_into_collection()?;
-    //     // println!("num samples {:?}", num_samples);
-
-    //     for table in signal_table {
-    //         if let Ok(chunk) = table {
-    //             let arr_iter = chunk.arrays();
-    //             // let uuid: Vec<Option<SignalUuid>> =
-    // arr_iter[0].as_ref().try_into_collection()?;             let vbz:
-    // Vec<Option<SignalVbz>> = arr_iter[1].as_ref().try_into_collection()?;
-    //             let samples: Vec<Option<u32>> =
-    // arr_iter[2].as_ref().try_into_collection()?;
-    // println!("samples {samples:?}");             let data: &[u8] =
-    // vbz[0].as_ref().unwrap().0.as_ref();             // let rest: &[u8] =
-    // vbz[1].as_ref().unwrap().0.as_ref();             // let mut total_data =
-    // data.to_vec();             // total_data.extend_from_slice(rest);
-    //             // let total_data = Cursor::new(total_data);
-    //             // let res = zstd::decode_all(total_data).unwrap();
-    //             // println!("combined zstd decoded len {}", res.len());
-    //             let count = samples[0].unwrap() as usize;
-    //             println!("count: {count}");
-    //             // let _decoded = svb::decode(data, count)?;
-    //             let decoded = svb16::decode(data, count).unwrap();
-    //             println!("decoded len: {}", decoded.len());
-    //             // println!("decoded: {decoded:?}");
-    //             // let ref_rows = SignalRowRef { read_id: &uuid, signal: &vbz,
-    // samples: &samples };             // for arr in
-    // chunk.into_arrays().into_iter() {             //     let row:
-    // Vec<SignalRow> = arr.try_into_collection()?;             // }
-    //         } else {
-    //             println!("Failed");
-    //         }
-    //     }
-    //     // let row = signal_table.next().unwrap().unwrap();
-    //     // let arr = row.into_arrays().into_iter().next().unwrap();
-    //     // let datatype = arr.data_type();
-    //     // let ptype = datatype.to_physical_type();
-    //     // println!("{arr:?}");
-    //     // println!("Datatype:\t{datatype:?}");
-    //     // println!("Physical Type:\t{ptype:?}");
-    //     // let arr: Result<Vec<SignalRow>, _> = arr.try_into_collection();
-    //     // println!("{:?}", SignalRow::data_type());
-    //     // println!("{arr:?}");
-
-    //     Ok(())
-    // }
 
     #[test]
     fn test_check_signature() -> eyre::Result<()> {

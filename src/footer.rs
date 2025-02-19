@@ -27,6 +27,12 @@ impl Table {
 #[derive(Debug)]
 pub struct RunInfoTable(Table);
 
+impl RunInfoTable {
+    pub fn as_ref(&self) -> &Table {
+        &self.0
+    }
+}
+
 #[derive(Debug)]
 pub struct ReadTable(Table);
 impl ReadTable {

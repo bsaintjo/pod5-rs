@@ -7,7 +7,10 @@
 // 1. Map => casting to list array
 // 2. Smaller types, aka not Large*
 // 3. Support Extension data types, at least casting down to regular type
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::{
+    collections::HashMap,
+    io::{Cursor, Read, Seek, SeekFrom},
+};
 
 use polars::{
     error::PolarsError,
@@ -23,9 +26,25 @@ use polars_arrow::{
 
 pub(crate) mod compatibility;
 
-use crate::{error::Pod5Error, svb16::decode};
+use crate::{error::Pod5Error, reader::Reader, svb16::decode};
 
-use self::compatibility::convert_array2;
+struct SignalReadIndexer<R: Read + Seek> {
+    index: HashMap<String, Vec<u64>>,
+    reader: FileReader<R>,
+}
+
+impl<R> SignalReadIndexer<R>
+where
+    R: Read + Seek,
+{
+    fn from_reader(reader: FileReader<R>) -> Self {
+        todo!()
+    }
+
+    fn get_read(read_id: &str) -> SignalDataFrame {
+        todo!()
+    }
+}
 
 /// DataFrame wrapper for the POD5 Signal table.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -37,32 +56,35 @@ impl SignalDataFrame {
     /// Assumes that there are two columns, samples (u32) representing the
     /// number of signal measurements, and signal, representing the
     /// compressed signal data (binary)
-    pub fn decompress_signal(self, col_name: &str) -> Result<Self, Pod5Error> {
+    pub fn decompress_signal(self) -> Result<Self, Pod5Error> {
         let res = self
             .0
             .lazy()
             .with_column(
-                pl::as_struct(vec![pl::col("samples"), pl::col("signal")])
+                pl::as_struct(vec![pl::col("samples"), pl::col("minknow.vbz")])
                     .map(decompress_signal_series, GetOutput::default())
-                    .alias(col_name),
+                    .alias("minknow.vbz"),
             )
             .collect()
             .map(Self)?;
         Ok(res)
     }
 
-    pub(crate) fn decompress_signal_with(
-        self,
-        col_name: &str,
-        signal_col: &str,
-        samples_col: &str,
-    ) -> Result<Self, Pod5Error> {
-        todo!()
-    }
-
-    /// Convert the `read_id` column into UUID strings.
-    fn parse_read_ids(self, col_name: &str) -> Result<Self, Pod5Error> {
-        todo!()
+    /// Convert i16 ADC signal data into f32 picoamps
+    pub fn to_picoamps(mut self, calibration: &Calibration) -> Self {
+        let adcs = self.0["minknow.uuid"]
+            .str()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .map(|rid| calibration.0.get(rid).unwrap())
+            .collect::<Vec<_>>();
+        let offsets = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.offset)));
+        let scale = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.scale)));
+        let res = (&self.0["minknow.vbz"] + &offsets).unwrap();
+        let res = (res * scale).unwrap();
+        self.0.with_column(res).unwrap();
+        self
     }
 
     /// Get the inner `polars` DataFrame.
@@ -104,7 +126,10 @@ impl Iterator for SignalDataFrameIter {
     /// TODO: Check when Result happens
     fn next(&mut self) -> Option<Self::Item> {
         let df = get_next_df(&self.fields, &mut self.table_reader);
-        df.map(|res| res.map(SignalDataFrame))
+        df.map(|res| {
+            res.map(SignalDataFrame)
+                .and_then(|sdf| sdf.decompress_signal())
+        })
     }
 }
 
@@ -157,6 +182,10 @@ impl ReadDataFrameIter {
             table_reader,
         })
     }
+
+    pub fn into_calibration(self) -> Calibration {
+        Calibration::from_read_dfs(self)
+    }
 }
 
 impl Iterator for ReadDataFrameIter {
@@ -176,9 +205,14 @@ pub(crate) fn get_next_df(
     if let Ok(chunk) = table_reader.next()? {
         let mut acc = Vec::with_capacity(fields.len());
         for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
-            let arr = convert_array2(arr);
-            let s = polars::prelude::Series::try_from((f, arr));
-            acc.push(s.unwrap());
+            // let arr = convert_array2(arr);
+            // if let Some(s) = compatibility::array_to_series(f, arr) {
+            //     acc.push(s);
+            // }
+            let s = compatibility::array_to_series(f, arr);
+            acc.push(s);
+            // let s = polars::prelude::Series::try_from((f, arr));
+            // acc.push(s.unwrap());
         }
 
         let df = polars::prelude::DataFrame::from_iter(acc);
@@ -205,22 +239,6 @@ pub(crate) fn read_to_dataframe<R: Read + Seek>(
 
     let signal_table = FileReader::new(run_info_buf, metadata, None, None);
     Ok((fields, signal_table))
-}
-
-pub(crate) fn combine_signal_rows(series: Series) -> Result<Option<Series>, PolarsError> {
-    let xs = series
-        .binary()
-        .unwrap()
-        .into_iter()
-        .fold(Vec::new(), |mut acc: Vec<u8>, xs| {
-            if let Some(xs) = xs {
-                acc.extend_from_slice(xs);
-                acc
-            } else {
-                acc
-            }
-        });
-    Ok(Some(Series::new(series.name().clone(), &xs)))
 }
 
 pub(crate) fn parse_uuid_from_read_id(
@@ -258,4 +276,67 @@ pub(crate) fn decompress_signal_series(
         "decompressed".into(),
         out,
     ))))
+}
+
+#[derive(Debug)]
+struct AdcData {
+    offset: f32,
+    scale: f32,
+}
+
+#[derive(Debug)]
+pub struct Calibration(HashMap<String, AdcData>);
+
+impl Calibration {
+    fn from_read_dfs(iter: ReadDataFrameIter) -> Self {
+        let mut cal_data = HashMap::new();
+        for read_df in iter.flatten() {
+            let df = read_df
+                .0
+                .select(["minknow.uuid", "calibration_offset", "calibration_scale"])
+                .unwrap();
+            let iters = df.iter().collect::<Vec<_>>();
+            for (read_id, offset, scale) in itertools::multizip((
+                iters[0].str().unwrap().into_iter().flatten(),
+                iters[1].f32().unwrap().into_iter().flatten(),
+                iters[2].f32().unwrap().into_iter().flatten(),
+            )) {
+                cal_data.insert(read_id.to_string(), AdcData { offset, scale });
+            }
+        }
+        Calibration(cal_data)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::fs::File;
+
+    use crate::reader::Reader;
+
+    #[test]
+    fn test_reader() -> eyre::Result<()> {
+        let path = "extra/multi_fast5_zip_v3.pod5";
+        let file = File::open(path)?;
+        let mut reader = Reader::from_reader(file)?;
+        for read_df in reader.read_dfs()?.flatten() {
+            println!("{:?}", read_df.0.schema());
+            let df = read_df.0.head(Some(4));
+            println!("{df:?}");
+        }
+        let cal = reader.read_dfs()?.into_calibration();
+
+        for signal_df in reader.signal_dfs()?.flatten() {
+            let df = signal_df.to_picoamps(&cal).0.head(Some(4));
+            println!("{df:?}");
+        }
+        for run_info_df in reader.run_info_dfs()?.flatten() {
+            let schema = run_info_df.0.schema();
+            println!("{schema:?}");
+        }
+
+        let signal_df = reader.signal_dfs()?.flatten().next().unwrap();
+        println!("{:?}", signal_df.to_picoamps(&cal));
+        Ok(())
+    }
 }
