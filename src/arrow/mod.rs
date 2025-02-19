@@ -1,18 +1,12 @@
-use std::{
-    io::{Cursor, Read, Seek},
-    marker::PhantomData,
-};
+use std::io::{Cursor, Read, Seek};
 
-use arrow::{
-    array::{
-        ArrayAccessor, ArrayIter, FixedSizeBinaryArray, Float32Array, LargeBinaryArray,
-        RecordBatch, UInt16Array, UInt32Array,
-    },
-    error::ArrowError,
-    ipc::reader::FileReader,
-};
+use arrow::{array::LargeBinaryArray, error::ArrowError, ipc::reader::FileReader};
+use extract::ArrowExtract;
 
 use crate::{footer::ParsedFooter, svb16::decode};
+
+mod extract;
+mod record;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Pod5ArrowError {
@@ -20,81 +14,9 @@ pub enum Pod5ArrowError {
     ArrowError(#[from] ArrowError),
 }
 
-#[derive(Debug)]
-pub struct Pod5ArrowReader<R> {
-    reader: FileReader<R>,
-}
-
-impl<R> Pod5ArrowReader<R>
-where
-    R: Read + Seek,
-{
-    pub fn try_new(reader: R) -> Result<Self, Pod5ArrowError> {
-        let reader = FileReader::try_new(reader, None)?;
-        Ok(Self { reader })
-    }
-
-    pub fn into_inner(self) -> FileReader<R> {
-        self.reader
-    }
-}
-
-struct SignalData {
-    raw_signal: Vec<i16>,
-}
-
-impl SignalData {
-    fn from_raw_signal(raw_signal: &[i16]) -> Self {
-        todo!()
-    }
-}
-
-#[derive(Debug)]
-struct ReadId {
-    bytes: Vec<u8>,
-}
-
-impl ReadId {
-    fn new(bytes: Vec<u8>) -> Self {
-        Self { bytes }
-    }
-
-    fn from_slice(bytes: &[u8]) -> Self {
-        Self::new(bytes.to_vec())
-    }
-
-    fn from_uuid(uuid: &str) -> Self {
-        Self::from_slice(&uuid::Uuid::parse_str(uuid).unwrap().into_bytes())
-    }
-
-    fn raw(&self) -> &[u8] {
-        &self.bytes
-    }
-
-    fn uuid(&self) -> String {
-        uuid::Uuid::from_slice(&self.bytes).unwrap().to_string()
-    }
-}
-
-#[derive(Debug)]
-struct Record {
-    read_id: ReadId,
-    samples: u32,
-    signal: Vec<i16>,
-}
-impl Record {
-    fn new(read_id: ReadId, samples: u32, signal: Vec<i16>) -> Self {
-        Self {
-            read_id,
-            samples,
-            signal,
-        }
-    }
-}
-
 struct ReadBatchIterator<R> {
     reader: FileReader<R>,
-    read_ids: Vec<ReadId>,
+    read_ids: Vec<record::ReadId>,
     signals: Vec<Vec<i16>>,
     samples: Vec<u32>,
 }
@@ -105,7 +27,7 @@ where
 {
     fn load_next_batch(&mut self) -> Option<()> {
         let batch = self.reader.next()?.unwrap();
-        let read_ids = ReadId::extract(&batch, "read_id");
+        let read_ids = record::ReadId::extract(&batch, "read_id");
         // let read_ids = batch
         //     .column_by_name("read_id")
         //     .unwrap()
@@ -148,16 +70,16 @@ impl<R> Iterator for ReadBatchIterator<R>
 where
     R: Read + Seek,
 {
-    type Item = Record;
+    type Item = record::Record;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.read_ids.is_empty() && self.load_next_batch().is_none() {
             return None;
         }
         let read_id = self.read_ids.pop().unwrap();
-        let signal = self.signals.pop().unwrap();
+        let signal = record::SignalData::from_raw_signal(self.signals.pop().unwrap());
         let samples = self.samples.pop().unwrap();
-        Some(Record::new(read_id, samples, signal))
+        Some(record::Record::new(read_id, samples, signal))
     }
 }
 
@@ -166,15 +88,7 @@ struct Reader {
     footer: ParsedFooter,
 }
 
-struct ReaderMetadata {
-    footer: ParsedFooter,
-}
-
 impl Reader {
-    fn metadata(&self) -> ReaderMetadata {
-        todo!()
-    }
-
     fn from_reader<R>(mut reader: &mut R) -> Self
     where
         R: Read + Seek,
@@ -187,15 +101,14 @@ impl Reader {
         st.read_to_buf(&mut reader, &mut signal_buf).unwrap();
         let signal_buf = Cursor::new(signal_buf);
 
-        let reader = Pod5ArrowReader::try_new(signal_buf).unwrap();
-        let reader = reader.into_inner();
+        let reader = FileReader::try_new(signal_buf, None).unwrap();
         Self {
             reader,
             footer: parsed,
         }
     }
 
-    fn get_read(&self, read_id: &str) -> Record {
+    fn get_read(&self, read_id: &str) -> record::Record {
         todo!()
     }
     fn reads(self) -> ReadBatchIterator<Cursor<Vec<u8>>> {
@@ -210,75 +123,14 @@ impl Reader {
     }
 }
 
-/// Generic trait for converting from Arrow arrays into corresponding vectors
-trait ArrowExtract: private::Sealed {
-    /// The specific Arrow Array type to convert into
-    type ArrowArrayType;
-    fn convert(int: Option<<&Self::ArrowArrayType as ArrayAccessor>::Item>) -> Self
-    where
-        for<'a> &'a Self::ArrowArrayType: ArrayAccessor;
-
-    fn extract<'b>(batch: &'b RecordBatch, name: &str) -> Vec<Self>
-    where
-        Self: Sized,
-        for<'a> &'a Self::ArrowArrayType: ArrayAccessor,
-        for<'a> <Self as ArrowExtract>::ArrowArrayType: 'a,
-    {
-        let read_id = batch
-            .column_by_name(name)
-            .unwrap()
-            .as_any()
-            .downcast_ref::<Self::ArrowArrayType>()
-            .unwrap();
-
-        ArrayIter::new(read_id)
-            .map(|x| Self::convert(x))
-            .collect::<Vec<_>>()
-    }
-}
-
-impl ArrowExtract for ReadId {
-    type ArrowArrayType = FixedSizeBinaryArray;
-
-    fn convert(int: std::option::Option<<&FixedSizeBinaryArray as ArrayAccessor>::Item>) -> Self {
-        ReadId::new(int.unwrap().to_vec())
-    }
-}
-
-macro_rules! extract_primitive {
-    ($native_type:ty, $arr_type:ty) => {
-        impl ArrowExtract for $native_type {
-            type ArrowArrayType = $arr_type;
-
-            fn convert(int: std::option::Option<<&$arr_type as ArrayAccessor>::Item>) -> Self {
-                int.unwrap()
-            }
-        }
-    };
-}
-extract_primitive!(u32, UInt32Array);
-extract_primitive!(u16, UInt16Array);
-extract_primitive!(f32, Float32Array);
-
-struct Dict<T> {
-    phantom: PhantomData<T>,
-}
-
-mod private {
-    use super::ReadId;
-
-    pub trait Sealed {}
-    impl Sealed for ReadId {}
-    impl Sealed for u32 {}
-    impl Sealed for u16 {}
-    impl Sealed for f32 {}
-}
-
 #[cfg(test)]
 mod test {
     use std::{collections::HashMap, fs::File, io::Cursor};
 
-    use arrow::array::{Int16DictionaryArray, LargeBinaryArray, StringArray, UInt32Array};
+    use arrow::array::{
+        FixedSizeBinaryArray, Int16DictionaryArray, LargeBinaryArray, ListArray, StringArray,
+        UInt32Array, UInt64Array,
+    };
     use polars::prelude::ArrowDataType;
     use polars_arrow::{
         array::{growable::make_growable, Array, Utf8Array},
@@ -323,6 +175,7 @@ mod test {
         let mut reader = FileReader::try_new(signal_buf, None)?;
         dbg!(reader.schema());
         let batch = reader.next().unwrap().unwrap();
+        dbg!(&batch);
         let pore_type = batch
             .column_by_name("pore_type")
             .unwrap()
@@ -334,6 +187,29 @@ mod test {
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
+
+        let signal_idxs = batch
+            .column_by_name("signal")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ListArray>()
+            .unwrap()
+            .iter()
+            .map(|x| {
+                x.unwrap()
+                    .as_any()
+                    .downcast_ref::<UInt64Array>()
+                    .unwrap()
+                    .iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        // .downcast_dict::<StringArray>()
+        // .unwrap()
+        // .into_iter()
+        // .flatten()
+        // .collect::<Vec<_>>();
 
         Ok(())
     }
@@ -352,8 +228,7 @@ mod test {
         st.read_to_buf(&mut file, &mut signal_buf)?;
         let signal_buf = Cursor::new(signal_buf);
 
-        let reader = Pod5ArrowReader::try_new(signal_buf)?;
-        let mut reader = reader.into_inner();
+        let mut reader = FileReader::try_new(signal_buf, None)?;
         println!("{}", reader.schema());
         let batch = reader.next().unwrap().unwrap();
         let read_id = batch
