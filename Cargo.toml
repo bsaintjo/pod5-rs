@@ -58,6 +58,7 @@ polars = { version = "0.44.2", features = [
 uuid = "1.7.0"
 log = "0.4.20"
 arrow = "53.3.0"
+lru = "0.13.0"
 
 
 [dev-dependencies]
