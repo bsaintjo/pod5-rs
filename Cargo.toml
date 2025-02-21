@@ -31,22 +31,22 @@ categories = [
 [dependencies]
 # encode/decode of sizes in control bytes in svb
 bitvec = "1.0.1"
-delta-encoding = "0.4.0"
+delta-encoding = "0.4.2"
 zigzag = "0.1.0"
-zstd = "0.13.0"
+zstd = "0.13.3"
 
 # chunking control bytes during decoding
-itertools = "0.13.0"
+itertools = "0.14.0"
 
 # Parsing footer schema
 flatbuffers = "24.3.25"
 
 # Error handling
-thiserror = "2.0.4"
+thiserror = "2.0.11"
 
 # DataFrame API
-polars-arrow = { version = "0.44.2", features = ["io_ipc", "compute_cast"] }
-polars = { version = "0.44.2", features = [
+polars-arrow = { version = "0.46.0", features = ["io_ipc"] }
+polars = { version = "0.46.0", features = [
     "dtype-full",
     "dtype-array",
     "timezones",
@@ -55,16 +55,15 @@ polars = { version = "0.44.2", features = [
 ] }
 
 # Parsing read ids
-uuid = "1.7.0"
-log = "0.4.20"
-arrow = "53.3.0"
+uuid = "1.14.0"
+log = "0.4.25"
+arrow = "54.2.0"
 lru = "0.13.0"
 
 
 [dev-dependencies]
-polars-compute = { version = "0.45.1", features = ["cast"] }
 doc-comment = "0.3.3"
 eyre = "0.6.8"
 # Testing small files by memmap
 memmap2 = "0.9.5"
-proptest = "1.4.0"
+proptest = "1.6.0"

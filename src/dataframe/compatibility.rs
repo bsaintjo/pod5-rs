@@ -32,8 +32,8 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
 
     match field.dtype() {
         // Read UUIDs
-        ArrowDataType::Extension(_, adt, _)
-            if *adt.to_logical_type() == ArrowDataType::FixedSizeBinary(16) =>
+        ArrowDataType::Extension(bet)
+            if bet.inner.to_logical_type() == &ArrowDataType::FixedSizeBinary(16) =>
         {
             let field =
                 pl::ArrowField::new(PlSmallStr::from("minknow.uuid"), ArrowDataType::Utf8, true);
@@ -55,8 +55,8 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
         }
 
         // Signal data
-        ArrowDataType::Extension(_, adt, _)
-            if *adt.to_logical_type() == ArrowDataType::LargeBinary =>
+        ArrowDataType::Extension(bet)
+            if bet.inner.to_logical_type() == &ArrowDataType::LargeBinary =>
         {
             let field = pl::ArrowField::new(
                 PlSmallStr::from("minknow.vbz"),

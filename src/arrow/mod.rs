@@ -125,16 +125,11 @@ impl Reader {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashMap, fs::File, io::Cursor};
+    use std::{fs::File, io::Cursor};
 
     use arrow::array::{
         FixedSizeBinaryArray, Int16DictionaryArray, LargeBinaryArray, ListArray, StringArray,
         UInt32Array, UInt64Array,
-    };
-    use polars::prelude::ArrowDataType;
-    use polars_arrow::{
-        array::{growable::make_growable, Array, Utf8Array},
-        compute::cast::utf8_to_utf8view,
     };
 
     use crate::{footer::ParsedFooter, svb16::decode};
@@ -268,81 +263,5 @@ mod test {
         // }
 
         Ok(())
-    }
-
-    fn dt() -> ArrowDataType {
-        ArrowDataType::Struct(vec![
-            polars_arrow::datatypes::Field::new("a".into(), ArrowDataType::Utf8, true),
-            polars_arrow::datatypes::Field::new("b".into(), ArrowDataType::Utf8, true),
-        ])
-    }
-
-    fn array() -> polars_arrow::array::MapArray {
-        let dtype = ArrowDataType::Map(
-            Box::new(polars_arrow::datatypes::Field::new("a".into(), dt(), true)),
-            false,
-        );
-
-        let field = polars_arrow::array::StructArray::new(
-            dt(),
-            3,
-            vec![
-                Box::new(polars_arrow::array::Utf8Array::<i32>::from_slice([
-                    "a", "aa", "aaa",
-                ])) as _,
-                Box::new(polars_arrow::array::Utf8Array::<i32>::from_slice([
-                    "b", "bb", "bbb",
-                ])),
-            ],
-            None,
-        );
-
-        polars_arrow::array::MapArray::new(
-            dtype,
-            vec![0, 1, 2, 3].try_into().unwrap(),
-            Box::new(field),
-            None,
-        )
-    }
-
-    #[test]
-    #[ignore = "exploring API, will tend panic"]
-    fn test_map_conversion() {
-        let map_array = array();
-        let x = map_array.iter().next().unwrap().unwrap();
-        println!("{x:?}");
-        let sa: &polars_arrow::array::StructArray = x.as_any().downcast_ref().unwrap();
-        let mut dict = HashMap::new();
-        let (fields, capacity, data, validity) = sa.clone().into_data();
-        for (field, datum) in fields.into_iter().zip(data.into_iter()) {
-            dict.entry(field).or_insert(Vec::new()).push(datum);
-            // make_growable(arrays, use_validity, capacity)
-        }
-        let mut new_arrs = Vec::new();
-        for (f, arrs) in dict.into_iter() {
-            let acc = arrs.iter().map(|x| x.as_ref()).collect::<Vec<_>>();
-            let arr = make_growable(&acc, false, capacity).as_box();
-
-            if f.dtype == ArrowDataType::Utf8 {
-                let down = arr
-                    .as_any()
-                    .downcast_ref::<Utf8Array<i32>>()
-                    .unwrap()
-                    .clone();
-                let arr = utf8_to_utf8view(&down);
-                new_arrs.push(arr.to_boxed());
-            }
-            if f.dtype == ArrowDataType::LargeUtf8 {
-                let down = arr
-                    .as_any()
-                    .downcast_ref::<Utf8Array<i64>>()
-                    .unwrap()
-                    .clone();
-                let arr = utf8_to_utf8view(&down);
-                new_arrs.push(arr.to_boxed());
-            } else {
-                new_arrs.push(arr);
-            }
-        }
     }
 }

@@ -39,7 +39,7 @@ impl<'a> DecodeIter<'a> {
     }
 }
 
-impl<'a> Iterator for DecodeIter<'a> {
+impl Iterator for DecodeIter<'_> {
     type Item = u16;
 
     fn next(&mut self) -> Option<Self::Item> {

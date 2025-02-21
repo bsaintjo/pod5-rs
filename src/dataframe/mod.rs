@@ -30,7 +30,7 @@ use uuid::Uuid;
 
 pub(crate) mod compatibility;
 
-use crate::{error::Pod5Error, reader::Reader, svb16::decode};
+use crate::{error::Pod5Error, svb16::decode};
 
 struct SignalReadIndexer<R: Read + Seek> {
     read_index: HashMap<String, Vec<u64>>,
@@ -291,7 +291,7 @@ pub(crate) fn parse_uuid_from_read_id(
         .into_iter()
         .map(|bs: Option<&[u8]>| bs.map(|bbs| uuid::Uuid::from_slice(bbs).unwrap().to_string()))
         .collect::<Vec<_>>();
-    Ok(Some(Column::Series(Series::new(
+    Ok(Some(Column::from(Series::new(
         series.name().clone(),
         read_ids,
     ))))
@@ -313,7 +313,7 @@ pub(crate) fn decompress_signal_series(
             Series::from_iter(decoded)
         })
         .collect::<Vec<_>>();
-    Ok(Some(Column::Series(Series::new(
+    Ok(Some(Column::from(Series::new(
         "decompressed".into(),
         out,
     ))))
