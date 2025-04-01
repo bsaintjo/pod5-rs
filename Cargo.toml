@@ -3,6 +3,7 @@ members = [
     "examples/arrow-example",
     "examples/convert-to-slow5",
     "examples/find-all-reads",
+    "pod5frame-py",
 ]
 
 [workspace.package]

@@ -64,8 +64,31 @@ SignalDataFrame(shape: (22, 3)
 └─────────────────────────────────┴─────────────────────────────────┴─────────┘)
 ```
 
+## Why use this
+
+- Use this if you are familiar with DataFrame APIs (pandas, polars, etc.)
+- Want to export POD5 into different formats
+  - Since we export the full polars API, its relatively straightforward to output your DataFrame as JSON or serde supported formats
+
+## Why not use this
+
+- You aren't familiar with details of POD5 data format
+  - For example, in the above example, data from the same read is split across multiple rows. If you want to iterate over the signal data for each read, you will need to use additional Dataframe methods like polars, roughly `.groupby(["read_id"]).agg([col("samples").sum(), col("minknow.vbz").explode()])` to an aggregated DataFrame.
+  - To know what data you are want, you need to know which table contains your data and what the is the name of the column(s) you are interested in. For more documentation on what information each table, check the [TOML files here](https://github.com/nanoporetech/pod5-file-format/tree/master/docs/tables) for column names, data types, and documentation.
+  - Common columns:
+    - Signal data: SignalTable minknow.vbz
+    - Read ID: read_id in each table
+- You need to integrate data across multiple tables
+  - For storage efficiency, certain information is split into different POD5 tables. To combine these tables you need to intersect the two tables based on some index. For example, if you want to filter reads based on the end reason, you need to pull that information from the ReadTable, then
+- You need to write POD5 files
+  - Currently only support is available for reading
+- You need support for older versions of POD5 files
+  - API is based on POD5 v3, and it may work with other versions but likely will panic.
+
 ## Roadmap
 
+- [ ] Python integration via maturin and PyO3
+- [ ] Support for read indexing
 - [ ] Convenience/examples for conversion to SLOW5/BLOW5
 - [ ] VBZ de/compression
   - [x] Decompression
