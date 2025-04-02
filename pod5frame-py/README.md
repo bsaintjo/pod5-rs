@@ -30,7 +30,9 @@ $ source .venv/bin/activate
 Until the package gets into decent shape, I'll hold off on uploading to PyPI. If you are still interested, you can install via git with this command
 
 ```bash
-pip install -r "git+https://github.com/bsaintjo/pod5-rs.git/#egg=pod5frame&subdirectory=pod5frame-py"
+git clone https://github.com/bsaintjo/pod5-rs.git
+cd pod5-rs/pod5frame-py
+pip install -e .
 ```
 
 ## Usage
