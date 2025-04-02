@@ -5,7 +5,7 @@
 [stability-badge]: https://img.shields.io/badge/stability-experimental-orange.svg
 [stability-url]: https://github.com/mkenney/software-guides/blob/master/STABILITY-BADGES.md#experimental
 
-Experimental library for interacting with [POD5 files](https://github.com/nanoporetech/pod5-file-format) in Rust.
+Experimental library for interacting with [POD5 files](https://github.com/nanoporetech/pod5-file-format). While this repository has focused on reading POD5 files using Rust and `polars`, there are `arrow`-only and Python bindings available as well.
 
 ## Installation
 
@@ -14,6 +14,10 @@ To use this crate in your project, run:
 ```bash
 cargo add --git https://github.com/bsaintjo/pod5-rs
 ```
+
+### Python version
+
+If you are interested in the Python package, checkout [here](./pod5frame-py/README.md).
 
 ## Motivation: Dataframes for POD5 files
 
