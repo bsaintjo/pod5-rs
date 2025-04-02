@@ -23,9 +23,13 @@ dynamic = ["version"]
 readme = "README.md"
 license-files = ["../LICENSE*"]
 license = "MIT OR Apache-2.0"
+dependencies = ["polars"]
 
 [project.urls]
 source = "https://github.com/bsaintjo/pod5-rs/tree/dev/pod5frame-py"
+
+[project.optional-dependencies]
+dev = ["pytest"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

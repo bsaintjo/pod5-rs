@@ -6,9 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "pod5frame"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pyo3 = "0.23.0"
+pyo3 = { version = "0.23.5", features = ["extension-module"] }
 pod5 = { path = ".." }
 pyo3-polars = "0.20.0"
