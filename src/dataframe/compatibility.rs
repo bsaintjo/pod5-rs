@@ -1,6 +1,6 @@
 use polars::{
     datatypes::ArrowDataType,
-    prelude::{LargeBinaryArray, PlSmallStr},
+    prelude::{CompatLevel, LargeBinaryArray, PlSmallStr},
     series::Series,
 };
 
@@ -83,4 +83,28 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
             panic!("unimplemented datatype: {:?}", field);
         }
     }
+}
+
+struct FieldArray {
+    field: pl::ArrowField,
+    arr: Vec<Box<dyn Array>>,
+}
+
+impl FieldArray {
+    fn new(field: pl::ArrowField, arr: Vec<Box<dyn Array>>) -> Self {
+        Self { field, arr }
+    }
+}
+
+fn series_to_array(series: Series) -> FieldArray {
+    let name = series.name().clone();
+    let field = series.dtype().to_arrow_field(name, CompatLevel::newest());
+    let chunks = series.into_chunks();
+    match (field.name.as_str(), field.dtype) {
+        ("minknow.vbz", _) => todo!(),
+        ("minknow.uuid", _) => todo!(),
+        _ => todo!()
+    }
+    // FieldArray::new(field, chunks)
+    todo!()
 }
