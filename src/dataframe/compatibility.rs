@@ -1,3 +1,4 @@
+use arrow::ipc::Utf8View;
 use polars::{
     datatypes::ArrowDataType,
     prelude::{CompatLevel, LargeBinaryArray, PlSmallStr},
@@ -5,7 +6,7 @@ use polars::{
 };
 
 use polars::prelude as pl;
-use polars_arrow::array::{Array, FixedSizeBinaryArray, Utf8Array};
+use polars_arrow::array::{Array, FixedSizeBinaryArray, Utf8Array, Utf8ViewArray};
 use uuid::Uuid;
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays except the Extensions.
@@ -100,11 +101,46 @@ fn series_to_array(series: Series) -> FieldArray {
     let name = series.name().clone();
     let field = series.dtype().to_arrow_field(name, CompatLevel::newest());
     let chunks = series.into_chunks();
-    match (field.name.as_str(), field.dtype) {
+    match (field.name.as_str(), &field.dtype) {
         ("minknow.vbz", _) => todo!(),
-        ("minknow.uuid", _) => todo!(),
-        _ => todo!()
+        ("minknow.uuid", _) => {
+            for chunk in chunks.clone() {
+                let arr = match &field.dtype {
+                    ArrowDataType::Utf8View => chunk
+                        .as_any()
+                        .downcast_ref::<Utf8ViewArray>()
+                        .unwrap()
+                        .values_iter()
+                        .map(|s| Some(Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap()))
+                        .collect::<Vec<Option<[u8; 16]>>>(),
+                    _ => chunk
+                        .as_any()
+                        .downcast_ref::<Utf8Array<i32>>()
+                        .unwrap()
+                        .values_iter()
+                        .map(|s| Some(Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap()))
+                        .collect::<Vec<Option<[u8; 16]>>>(),
+                };
+                let arr = FixedSizeBinaryArray::from(&arr);
+                println!("Entered array");
+            }
+        }
+        _ => todo!(),
     }
-    // FieldArray::new(field, chunks)
-    todo!()
+    FieldArray::new(field, chunks)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_series_to_array_minknow_uuid() {
+        let example = String::from("67e55044-10b1-426f-9247-bb680e5fe0c8");
+        let series = [example]
+            .into_iter()
+            .collect::<Series>()
+            .with_name("minknow.uuid".into());
+        let farr = series_to_array(series);
+    }
 }
