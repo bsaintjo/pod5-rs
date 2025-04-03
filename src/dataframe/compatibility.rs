@@ -1,13 +1,16 @@
-use arrow::ipc::Utf8View;
 use polars::{
     datatypes::ArrowDataType,
-    prelude::{CompatLevel, LargeBinaryArray, PlSmallStr},
+    prelude::{ArrowField, CompatLevel, LargeBinaryArray, PlSmallStr},
     series::Series,
 };
 
 use polars::prelude as pl;
-use polars_arrow::array::{Array, FixedSizeBinaryArray, Utf8Array, Utf8ViewArray};
+use polars_arrow::{
+    array::{Array, FixedSizeBinaryArray, Utf8Array, Utf8ViewArray},
+    datatypes::ExtensionType,
+};
 use uuid::Uuid;
+
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays except the Extensions.
 /// In order for properly handle Extension types, the arrays need to be cast to an Array type that polars can handle.
@@ -99,48 +102,78 @@ impl FieldArray {
 
 fn series_to_array(series: Series) -> FieldArray {
     let name = series.name().clone();
-    let field = series.dtype().to_arrow_field(name, CompatLevel::newest());
+    let field = series
+        .dtype()
+        .to_arrow_field(name.clone(), CompatLevel::newest());
     let chunks = series.into_chunks();
     match (field.name.as_str(), &field.dtype) {
-        ("minknow.vbz", _) => todo!(),
-        ("minknow.uuid", _) => {
-            for chunk in chunks.clone() {
-                let arr = match &field.dtype {
-                    ArrowDataType::Utf8View => chunk
-                        .as_any()
-                        .downcast_ref::<Utf8ViewArray>()
-                        .unwrap()
-                        .values_iter()
-                        .map(|s| Some(Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap()))
-                        .collect::<Vec<Option<[u8; 16]>>>(),
-                    _ => chunk
-                        .as_any()
-                        .downcast_ref::<Utf8Array<i32>>()
-                        .unwrap()
-                        .values_iter()
-                        .map(|s| Some(Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap()))
-                        .collect::<Vec<Option<[u8; 16]>>>(),
-                };
-                let arr = FixedSizeBinaryArray::from(&arr);
-                println!("Entered array");
-            }
+        ("minknow.vbz", _) => {
+            let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
+                name: name.clone(),
+                inner: ArrowDataType::LargeBinary,
+                metadata: None,
+            }));
+            let new_field = ArrowField::new(name.clone(), new_dt, true);
+            todo!()
         }
-        _ => todo!(),
+        ("minknow.uuid", _) => {
+            let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
+                name: name.clone(),
+                inner: ArrowDataType::FixedSizeBinary(16),
+                metadata: None,
+            }));
+            let new_field = ArrowField::new(name.clone(), new_dt, true);
+            let chunks = chunks
+                .into_iter()
+                .map(|chunk| {
+                    let arr = match &field.dtype {
+                        ArrowDataType::Utf8View => chunk
+                            .as_any()
+                            .downcast_ref::<Utf8ViewArray>()
+                            .unwrap()
+                            .values_iter()
+                            .map(|s| {
+                                Some(Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap())
+                            })
+                            .collect::<Vec<Option<[u8; 16]>>>(),
+                        _ => chunk
+                            .as_any()
+                            .downcast_ref::<Utf8Array<i32>>()
+                            .unwrap()
+                            .values_iter()
+                            .map(|s| {
+                                Some(Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap())
+                            })
+                            .collect::<Vec<Option<[u8; 16]>>>(),
+                    };
+                    FixedSizeBinaryArray::from(&arr).boxed()
+                })
+                .collect::<Vec<_>>();
+            FieldArray::new(new_field, chunks)
+        }
+        _ => FieldArray::new(field, chunks),
     }
-    FieldArray::new(field, chunks)
 }
 
 #[cfg(test)]
 mod test {
+    use polars::prelude::NamedFrom;
+
     use super::*;
 
     #[test]
     fn test_series_to_array_minknow_uuid() {
         let example = String::from("67e55044-10b1-426f-9247-bb680e5fe0c8");
-        let series = [example]
-            .into_iter()
-            .collect::<Series>()
-            .with_name("minknow.uuid".into());
+        let series = Series::new("minknow.uuid".into(), [example]);
         let farr = series_to_array(series);
+    }
+
+    #[test]
+    fn test_series_to_array_minknow_vbz() {
+        let example = Some(b"test" as &[u8]);
+        let series = Series::new("minknow.vbz".into(), [example]);
+        println!("{:?}", series.to_arrow(0, CompatLevel::newest()));
+        println!("{:?}", series.to_arrow(0, CompatLevel::oldest()));
+        // let farr = series_to_array(series);
     }
 }
