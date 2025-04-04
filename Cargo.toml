@@ -65,6 +65,7 @@ polars-schema = "0.46.0"
 
 [dev-dependencies]
 doc-comment = "0.3.3"
+env_logger = "0.11.8"
 eyre = "0.6.8"
 # Testing small files by memmap
 memmap2 = "0.9.5"

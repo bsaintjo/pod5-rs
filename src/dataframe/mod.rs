@@ -140,7 +140,7 @@ impl SignalDataFrame {
         let offsets = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.offset)));
         let scale = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.scale)));
         let res = (&self.0["minknow.vbz"] / &scale).unwrap();
-        let res = (res - offsets).unwrap();
+        let res = (res - offsets).unwrap().cast(&pl::DataType::List(Box::new(pl::DataType::Int16))).unwrap();
         self.0.with_column(res).unwrap();
         self
     }

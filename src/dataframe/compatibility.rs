@@ -9,10 +9,10 @@ use polars::{
 use polars::prelude as pl;
 use polars_arrow::{
     array::{
-        growable::make_growable, Array, BinaryViewArray, FixedSizeBinaryArray, Float32Array,
-        Int16Array, ListArray, MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray,
-        Utf8Array, Utf8ViewArray,
+        Array, BinaryViewArray, FixedSizeBinaryArray, Float32Array, Int16Array, ListArray,
+        MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray, Utf8Array, Utf8ViewArray,
     },
+    compute::concatenate,
     datatypes::{ArrowSchemaRef, ExtensionType},
     io::ipc::write::FileWriter as ArrowFileWriter,
     record_batch::RecordBatchT,
@@ -146,25 +146,13 @@ fn minknow_vbz_to_large_binary(
     let mut acc = MutableBinaryArray::<i64>::new();
     chunks.into_iter().for_each(|chunk| {
         match &field.dtype {
-            ArrowDataType::BinaryView => {
+            ArrowDataType::BinaryView | ArrowDataType::LargeBinary => {
                 let items = chunk
                     .as_any()
                     .downcast_ref::<BinaryViewArray>()
                     .unwrap()
-                    .values_iter()
-                    .map(|s| Some(s.to_vec()));
-                for a in items {
-                    acc.push(a);
-                }
-            }
-            // TODO: Already correct type so special case return chunks directly
-            ArrowDataType::LargeBinary => {
-                let items = chunk
-                    .as_any()
-                    .downcast_ref::<LargeBinaryArray>()
-                    .unwrap()
-                    .values_iter()
-                    .map(|s| Some(s.to_vec()));
+                    .iter()
+                    .map(|s| s.map(|t| t.to_vec()));
                 for a in items {
                     acc.push(a);
                 }
@@ -195,10 +183,11 @@ fn minknow_vbz_to_large_binary(
                                 .iter()
                                 .copied()
                                 .collect::<Vec<_>>();
-                            
+
                             svb16::encode(&res).unwrap()
                         })
-                    }).for_each(|item| acc.push(item));
+                    })
+                    .for_each(|item| acc.push(item));
             }
 
             // Decompressed signal picoamp data
@@ -258,7 +247,7 @@ fn minknow_uuid_to_fixed_size_binary(
     let mut acc = MutableFixedSizeBinaryArray::new(16);
     chunks.into_iter().for_each(|chunk| {
         match &field.dtype {
-            ArrowDataType::Utf8View => {
+            ArrowDataType::Utf8View | ArrowDataType::LargeUtf8 => {
                 chunk
                     .as_any()
                     .downcast_ref::<Utf8ViewArray>()
@@ -271,7 +260,7 @@ fn minknow_uuid_to_fixed_size_binary(
                     })
                     .for_each(|item| acc.push(item));
             }
-            _ => {
+            ArrowDataType::Utf8 => {
                 chunk
                     .as_any()
                     .downcast_ref::<Utf8Array<i32>>()
@@ -283,6 +272,10 @@ fn minknow_uuid_to_fixed_size_binary(
                         Some(res)
                     })
                     .for_each(|item| acc.push(item));
+            }
+
+            _ => {
+                panic!("Invalid datatype for field: {field:?}");
             }
         };
     });
@@ -297,17 +290,18 @@ fn series_to_array(series: Series) -> FieldArray {
     let field = series
         .dtype()
         .to_arrow_field(name.clone(), CompatLevel::newest());
+    log::debug!("series_to_array: {field:?}");
     let chunks = series.into_chunks();
+    log::debug!("example chunk: {:?}", &chunks[0]);
     match (field.name.as_str(), &field.dtype) {
         ("minknow.vbz", _) => minknow_vbz_to_large_binary(&field, chunks).unwrap(),
         ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(&field, chunks).unwrap(),
         _ => {
             let chunks = chunks.iter().map(|b| b.as_ref()).collect::<Vec<_>>();
-            // TODO: make_growable can panic for certain types
-            // If there is a panic, check here to confirm if the type is at issue
-            // https://docs.rs/polars-arrow/0.46.0/src/polars_arrow/array/growable/mod.rs.html#89
-            let acc = make_growable(&chunks, true, chunks.len()).as_box();
-            FieldArray::new(field, acc)
+            let acc = concatenate::concatenate(&chunks).unwrap();
+            let farr = FieldArray::new(field, acc);
+            log::debug!("series_to_array: {farr:?}");
+            farr
         }
     }
 }
@@ -319,10 +313,20 @@ mod test {
     use polars::{df, prelude::NamedFrom};
     use polars_arrow::io::ipc::write::WriteOptions;
 
+    use crate::dataframe::{AdcData, Calibration, SignalDataFrame};
+
     use super::*;
+
+    fn init() {
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+    }
 
     #[test]
     fn test_series_to_array_minknow_uuid() {
+        init();
         let example = String::from("67e55044-10b1-426f-9247-bb680e5fe0c8");
         let series = Series::new("minknow.uuid".into(), [example]);
         let farr = series_to_array(series);
@@ -330,13 +334,23 @@ mod test {
 
     #[test]
     fn test_series_to_array_minknow_vbz() {
+        init();
         let example = Some(b"test" as &[u8]);
         let series = Series::new("minknow.vbz".into(), [example]);
         let farr = series_to_array(series);
     }
 
     #[test]
+    fn test_series_to_array_samples() {
+        init();
+        let example = [Some(717u32), Some(123u32)];
+        let series = Series::new("samples".into(), example);
+        let farr = series_to_array(series);
+    }
+
+    #[test]
     fn test_writer() {
+        init();
         let example = Some(b"test" as &[u8]);
         let series = Series::new("minknow.vbz".into(), [example]);
         let farr = vec![series_to_array(series)];
@@ -352,15 +366,29 @@ mod test {
 
     #[test]
     fn test_df() {
-        let df = df!("minknow.uuid" => ["67e55044-10b1-426f-9247-bb680e5fe0c8", "67e55044-10b1-426f-9247-bb680e5fe0c8"],
-                                "minknow.vbz" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32, 0.4f32].iter().collect::<Series>()],
-                                "samples" => [2u32, 2u32],
-                            ).unwrap();
+        init();
+        let cal = Calibration(
+            [(
+                "67e55044-10b1-426f-9247-bb680e5fe0c8".into(),
+                AdcData {
+                    offset: 0.0,
+                    scale: 1.0,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let df = SignalDataFrame(df!("minknow.uuid" => ["67e55044-10b1-426f-9247-bb680e5fe0c8", "67e55044-10b1-426f-9247-bb680e5fe0c8"],
+                                                          "minknow.vbz" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32, 0.4f32].iter().collect::<Series>()],
+                                                          "samples" => [2u32, 2u32],
+                                                         ).unwrap());
         println!("{df:?}");
-        let field_arrays = df
-            .iter()
-            .map(|s| series_to_array(s.clone()))
-            .collect::<Vec<_>>();
+        let df = df.to_adc(&cal);
+        println!("{df:?}");
+        let field_arrays =
+            df.0.iter()
+                .map(|s| series_to_array(s.clone()))
+                .collect::<Vec<_>>();
         let schema = Arc::new(field_arrs_to_schema(&field_arrays));
         let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
         let buf: Vec<u8> = Vec::new();
