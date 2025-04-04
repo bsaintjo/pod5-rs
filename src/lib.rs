@@ -97,7 +97,6 @@ mod tests {
         dataframe::compatibility::array_to_series, footer_generated::minknow::reads_format::Footer,
     };
 
-
     #[test]
     fn test_pod5() -> eyre::Result<()> {
         let path = "extra/multi_fast5_zip_v0.pod5";

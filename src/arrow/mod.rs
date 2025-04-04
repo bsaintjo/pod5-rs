@@ -132,9 +132,8 @@ mod test {
         UInt32Array, UInt64Array,
     };
 
-    use crate::{footer::ParsedFooter, svb16::decode};
-
     use super::*;
+    use crate::{footer::ParsedFooter, svb16::decode};
 
     #[test]
     #[ignore]
@@ -257,8 +256,9 @@ mod test {
             .collect::<Vec<_>>();
 
         // for batch in reader {
-        //     for (uuid, signal) in batch.read_id_data().into_iter().zip(batch.signal_data().decompressed_signal_iter()) {
-        //         todo!()
+        //     for (uuid, signal) in
+        // batch.read_id_data().into_iter().zip(batch.signal_data().
+        // decompressed_signal_iter()) {         todo!()
         //     }
         // }
 

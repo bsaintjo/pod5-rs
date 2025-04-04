@@ -25,7 +25,8 @@ impl SignalIter {
     }
 }
 
-/// Reads a POD5 file and allows for getting various iterators over parts of the file
+/// Reads a POD5 file and allows for getting various iterators over parts of the
+/// file
 #[pyclass]
 struct FrameReader {
     path: PathBuf,

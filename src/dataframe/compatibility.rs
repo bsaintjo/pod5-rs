@@ -2,11 +2,10 @@ use std::{io::Write, marker::PhantomData};
 
 use polars::{
     datatypes::ArrowDataType,
+    prelude as pl,
     prelude::{ArrowField, CompatLevel, LargeBinaryArray, PlSmallStr},
     series::Series,
 };
-
-use polars::prelude as pl;
 use polars_arrow::{
     array::{
         Array, BinaryViewArray, FixedSizeBinaryArray, Float32Array, Int16Array, ListArray,
@@ -22,21 +21,23 @@ use uuid::Uuid;
 
 use crate::svb16;
 
-/// Convert Arrow arrays into polars Series. This works for almost all arrays except the Extensions.
-/// In order for properly handle Extension types, the arrays need to be cast to an Array type that polars can handle.
-/// These are:
-/// Extension(minknow.vbz) ("signal data") => LargeBinary, downstream the signal can be converted because the
-/// samples columns is needed to decode
+/// Convert Arrow arrays into polars Series. This works for almost all arrays
+/// except the Extensions. In order for properly handle Extension types, the
+/// arrays need to be cast to an Array type that polars can handle. These are:
+/// Extension(minknow.vbz) ("signal data") => LargeBinary, downstream the signal
+/// can be converted because the samples columns is needed to decode
 /// Extension(minknow.uuid) ("read id") => Utf8Array
 ///
-/// WARNING: For adding additional support for types, Arrays can not just be recast into a supported concrete Array type,
-/// instead, the inner components need to be removed, somewhere the Extension type still remains after casting, causing
-/// confusing errors downstream.
+/// WARNING: For adding additional support for types, Arrays can not just be
+/// recast into a supported concrete Array type, instead, the inner components
+/// need to be removed, somewhere the Extension type still remains after
+/// casting, causing confusing errors downstream.
 /// Don't:
-/// Extension(minknow.vbz) => downcast_ref into a LargeBinaryArray => box back directly to Box<dyn Array> => ComputeError
-/// Instead:
-/// Extension(minknow.vbz) => downcast_ref into LargeBinaryArray => into_inner and split into components (offsets, bitmap, etc.)
-/// => LargeBinary::new with components => boxed to Box<dyn Array> => Series::try_from works properly
+/// Extension(minknow.vbz) => downcast_ref into a LargeBinaryArray => box back
+/// directly to Box<dyn Array> => ComputeError Instead:
+/// Extension(minknow.vbz) => downcast_ref into LargeBinaryArray => into_inner
+/// and split into components (offsets, bitmap, etc.) => LargeBinary::new with
+/// components => boxed to Box<dyn Array> => Series::try_from works properly
 pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Series {
     log::debug!("{field:?}");
     match Series::try_from((field, arr.clone())) {
@@ -132,7 +133,8 @@ fn field_arrs_to_record_batch(
 
 /// Converts a minknow.vbz array into a LargeBinary array.
 ///
-/// The minknow.vbz can be a list[f32], list[i16], or list[u8](?) depending on how it was processed.
+/// The minknow.vbz can be a list[f32], list[i16], or list[u8](?) depending on
+/// how it was processed.
 fn minknow_vbz_to_large_binary(
     field: &pl::ArrowField,
     chunks: Vec<Box<dyn Array>>,
@@ -233,7 +235,8 @@ fn minknow_vbz_to_large_binary(
 
 /// Convert a minknow.uuid array into a FixedSizeBinary array.
 ///
-/// The minknow.uuid is usually a str column and we try to convert from different types of Utf8* arrays.
+/// The minknow.uuid is usually a str column and we try to convert from
+/// different types of Utf8* arrays.
 fn minknow_uuid_to_fixed_size_binary(
     field: &pl::ArrowField,
     chunks: Vec<Box<dyn Array>>,
@@ -283,8 +286,9 @@ fn minknow_uuid_to_fixed_size_binary(
     Ok(FieldArray::new(new_field, acc))
 }
 
-/// Main entrypoint for series conversion. By default it converts the arrays as is, but for columns that are converted by array_to_series,
-/// we need to convert back to the original type used in POD5 tables.
+/// Main entrypoint for series conversion. By default it converts the arrays as
+/// is, but for columns that are converted by array_to_series, we need to
+/// convert back to the original type used in POD5 tables.
 fn series_to_array(series: Series) -> FieldArray {
     let name = series.name().clone();
     let field = series
@@ -313,9 +317,8 @@ mod test {
     use polars::{df, prelude::NamedFrom};
     use polars_arrow::io::ipc::write::WriteOptions;
 
-    use crate::dataframe::{AdcData, Calibration, SignalDataFrame};
-
     use super::*;
+    use crate::dataframe::{AdcData, Calibration, SignalDataFrame};
 
     fn init() {
         let _ = env_logger::builder()

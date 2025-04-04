@@ -9,8 +9,9 @@ pub enum Pod5Error {
     #[error("Failed to parse footer, {0}")]
     FooterParserFailure(#[from] InvalidFlatbuffer),
 
-    /// The signature at the beginning or ending of the file wasn't able to be verified.
-    /// This may mean that the file was corrupted or incorrectly written.
+    /// The signature at the beginning or ending of the file wasn't able to be
+    /// verified. This may mean that the file was corrupted or incorrectly
+    /// written.
     #[error("Failed to verify signature: {0}")]
     SignatureFailure(&'static str),
 

@@ -67,8 +67,9 @@ impl Iterator for DecodeIter<'_> {
 /// Can panic if the compressed array doesn't follow the SVB16 specification.
 ///
 /// When running on compressed signal data from a signal column in a POD5 file,
-/// use `decode` on the individual rows. If you try to combine the compressed signal
-/// across multiple rows that correspond to a signal read this function will panic.
+/// use `decode` on the individual rows. If you try to combine the compressed
+/// signal across multiple rows that correspond to a signal read this function
+/// will panic.
 pub fn decode(compressed: &[u8], count: usize) -> io::Result<Vec<i16>> {
     let compressed = zstd::decode_all(compressed)?;
     Ok(DecodeIter::from_compressed(&compressed, count)
@@ -120,13 +121,16 @@ impl<I: Iterator<Item = u16>> Encoder<I> {
 /// delta -> zig-zag -> streamvbyte -> zstd
 ///
 /// Warning
-/// The output nearly, but not exactly matches the implementation in ONT's pod5-file-format.
-/// The encoded output here will be slightly different in size. I suspect this is due to pod5-file-format
-/// allocating all the buffers ahead of time, which are slightly larger than absolutely needed. This implementation
-/// builds the data and control byte buffers iteratively and so contain the minimum number of bytes needed.
-/// I believe, but haven't confirmed, the output from this should still be compatible with pod5-file-format's
-/// decompressor, since the extra padding bytes won't change the resulting decoded values. Future work,
-/// may attempt to achieve this 1-to-1 compatibility.
+/// The output nearly, but not exactly matches the implementation in ONT's
+/// pod5-file-format. The encoded output here will be slightly different in
+/// size. I suspect this is due to pod5-file-format allocating all the buffers
+/// ahead of time, which are slightly larger than absolutely needed. This
+/// implementation builds the data and control byte buffers iteratively and so
+/// contain the minimum number of bytes needed. I believe, but haven't
+/// confirmed, the output from this should still be compatible with
+/// pod5-file-format's decompressor, since the extra padding bytes won't change
+/// the resulting decoded values. Future work, may attempt to achieve this
+/// 1-to-1 compatibility.
 pub fn encode(uncompressed: &[i16]) -> io::Result<Vec<u8>> {
     let iter = uncompressed.iter().copied().deltas().map(ZigZag::encode);
     let svb = Encoder::new(iter).encode();
@@ -136,8 +140,8 @@ pub fn encode(uncompressed: &[i16]) -> io::Result<Vec<u8>> {
     // let mut dst = vec![0; max_zstd_compressed];
     // zstd::encode_all(Cursor::new(svb), 1)
     zstd::bulk::compress(&svb, 1)
-    // let compressed_size = zstd::zstd_safe::compress(&mut dst, &svb, 1).unwrap();
-    // dst.resize(compressed_size, 0);
+    // let compressed_size = zstd::zstd_safe::compress(&mut dst, &svb,
+    // 1).unwrap(); dst.resize(compressed_size, 0);
     // Ok(dst)
 }
 
@@ -161,12 +165,14 @@ fn max_encoded_length(count: usize) -> usize {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use proptest::{arbitrary::any, prelude::proptest, prop_assert_eq};
     use std::{
         fs::File,
         io::{Cursor, Read},
     };
+
+    use proptest::{arbitrary::any, prelude::proptest, prop_assert_eq};
+
+    use super::*;
 
     #[test]
     fn test_num_ctrl_bytes() {

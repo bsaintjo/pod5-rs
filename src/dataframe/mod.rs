@@ -1,6 +1,7 @@
 //! `polars` DataFrame API for POD5 files
 //!
-//! This module provides utilities for interacting with POD5 tables using a DataFrame API from `polars`.
+//! This module provides utilities for interacting with POD5 tables using a
+//! DataFrame API from `polars`.
 
 // Polars notes
 // take_unchecked needs to support
@@ -205,8 +206,9 @@ impl ReadDataFrame {
     /// Convert the `read_id` column into UUID strings.
     ///
     /// By default, `read_id`s are in the binary representation of a UUID. Use
-    /// this method if you want to read the view the UUID in ASCII. The `col_name` can
-    /// be any existing column or a new column that will be added to the end of the DataFrame.
+    /// this method if you want to read the view the UUID in ASCII. The
+    /// `col_name` can be any existing column or a new column that will be
+    /// added to the end of the DataFrame.
     pub fn parse_read_ids(self, col_name: &str) -> Result<Self, Pod5Error> {
         let res = self
             .0
