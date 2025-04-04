@@ -1,3 +1,5 @@
+use std::{io::Write, marker::PhantomData};
+
 use polars::{
     datatypes::ArrowDataType,
     prelude::{ArrowField, CompatLevel, LargeBinaryArray, PlSmallStr},
@@ -6,11 +8,19 @@ use polars::{
 
 use polars::prelude as pl;
 use polars_arrow::{
-    array::{Array, FixedSizeBinaryArray, Utf8Array, Utf8ViewArray},
-    datatypes::ExtensionType,
+    array::{
+        growable::make_growable, Array, BinaryViewArray, FixedSizeBinaryArray, Float32Array,
+        Int16Array, ListArray, MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray,
+        Utf8Array, Utf8ViewArray,
+    },
+    datatypes::{ArrowSchemaRef, ExtensionType},
+    io::ipc::write::FileWriter as ArrowFileWriter,
+    record_batch::RecordBatchT,
 };
+use polars_schema::Schema;
 use uuid::Uuid;
 
+use crate::svb16;
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays except the Extensions.
 /// In order for properly handle Extension types, the arrays need to be cast to an Array type that polars can handle.
@@ -89,17 +99,198 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
     }
 }
 
+struct TableWriter<T, W: Write> {
+    schema: ArrowSchemaRef,
+    writer: ArrowFileWriter<W>,
+    table: PhantomData<T>,
+}
+
 struct FieldArray {
     field: pl::ArrowField,
-    arr: Vec<Box<dyn Array>>,
+    arr: Box<dyn Array>,
 }
 
 impl FieldArray {
-    fn new(field: pl::ArrowField, arr: Vec<Box<dyn Array>>) -> Self {
+    fn new(field: pl::ArrowField, arr: Box<dyn Array>) -> Self {
         Self { field, arr }
     }
 }
 
+fn field_arrs_to_schema(farrs: &[FieldArray]) -> Schema<pl::ArrowField> {
+    farrs.iter().map(|farr| farr.field.clone()).collect()
+}
+
+fn field_arrs_to_record_batch(
+    farrs: Vec<FieldArray>,
+    schema: ArrowSchemaRef,
+) -> RecordBatchT<Box<dyn Array>> {
+    let height = farrs[0].arr.len();
+    let arrays = farrs.into_iter().map(|f| f.arr).collect::<Vec<_>>();
+    RecordBatchT::new(height, schema, arrays)
+}
+
+/// Converts a minknow.vbz array into a LargeBinary array.
+///
+/// The minknow.vbz can be a list[f32], list[i16], or list[u8](?) depending on how it was processed.
+fn minknow_vbz_to_large_binary(
+    field: &pl::ArrowField,
+    chunks: Vec<Box<dyn Array>>,
+) -> Result<FieldArray, polars::error::PolarsError> {
+    let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
+        name: field.name.clone(),
+        inner: ArrowDataType::LargeBinary,
+        metadata: None,
+    }));
+    let new_field = ArrowField::new(field.name.clone(), new_dt, true);
+    let mut acc = MutableBinaryArray::<i64>::new();
+    chunks.into_iter().for_each(|chunk| {
+        match &field.dtype {
+            ArrowDataType::BinaryView => {
+                let items = chunk
+                    .as_any()
+                    .downcast_ref::<BinaryViewArray>()
+                    .unwrap()
+                    .values_iter()
+                    .map(|s| Some(s.to_vec()));
+                for a in items {
+                    acc.push(a);
+                }
+            }
+            // TODO: Already correct type so special case return chunks directly
+            ArrowDataType::LargeBinary => {
+                let items = chunk
+                    .as_any()
+                    .downcast_ref::<LargeBinaryArray>()
+                    .unwrap()
+                    .values_iter()
+                    .map(|s| Some(s.to_vec()));
+                for a in items {
+                    acc.push(a);
+                }
+            }
+
+            // Decompressed signal data
+            ArrowDataType::LargeList(inner)
+                if matches!(
+                    inner.as_ref(),
+                    ArrowField {
+                        dtype: ArrowDataType::Int16,
+                        ..
+                    }
+                ) =>
+            {
+                let items = chunk
+                    .as_any()
+                    .downcast_ref::<ListArray<i64>>()
+                    .unwrap()
+                    .iter()
+                    .map(|picoamp_arr| {
+                        picoamp_arr.map(|parr| {
+                            let res = parr
+                                .as_any()
+                                .downcast_ref::<Int16Array>()
+                                .unwrap()
+                                .values()
+                                .iter()
+                                .copied()
+                                .collect::<Vec<_>>();
+                            let res = svb16::encode(&res).unwrap();
+                            todo!()
+                        })
+                    });
+            }
+
+            // Decompressed signal picoamp data
+            ArrowDataType::LargeList(inner)
+                if matches!(
+                    inner.as_ref(),
+                    ArrowField {
+                        dtype: ArrowDataType::Float32,
+                        ..
+                    }
+                ) =>
+            {
+                let items = chunk
+                    .as_any()
+                    .downcast_ref::<ListArray<i64>>()
+                    .unwrap()
+                    .iter()
+                    .map(|picoamp_arr| {
+                        picoamp_arr.map(|parr| {
+                            let res = parr
+                                .as_any()
+                                .downcast_ref::<Float32Array>()
+                                .unwrap()
+                                .values_iter()
+                                .copied()
+                                .collect::<Vec<_>>();
+                            todo!()
+                        })
+                    });
+                todo!()
+                //     .unwrap()
+                //     .values_iter()
+                //     .map(|s| Some(s.as_bytes().to_vec()));
+                // for a in items {
+                //     acc.push(a);
+                // }
+            }
+            _ => panic!("Invalid datatype for field: {field:?}"),
+        };
+    });
+    Ok(FieldArray::new(new_field, acc.as_box()))
+}
+
+/// Convert a minknow.uuid array into a FixedSizeBinary array.
+///
+/// The minknow.uuid is usually a str column and we try to convert from different types of Utf8* arrays.
+fn minknow_uuid_to_fixed_size_binary(
+    field: &pl::ArrowField,
+    chunks: Vec<Box<dyn Array>>,
+) -> Result<FieldArray, polars::error::PolarsError> {
+    let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
+        name: field.name.clone(),
+        inner: ArrowDataType::FixedSizeBinary(16),
+        metadata: None,
+    }));
+    let new_field = ArrowField::new(field.name.clone(), new_dt, true);
+    let mut acc = MutableFixedSizeBinaryArray::new(16);
+    chunks.into_iter().for_each(|chunk| {
+        match &field.dtype {
+            ArrowDataType::Utf8View => {
+                chunk
+                    .as_any()
+                    .downcast_ref::<Utf8ViewArray>()
+                    .unwrap()
+                    .values_iter()
+                    .map(|s| {
+                        let res: [u8; 16] =
+                            Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap();
+                        Some(res)
+                    })
+                    .for_each(|item| acc.push(item));
+            }
+            _ => {
+                chunk
+                    .as_any()
+                    .downcast_ref::<Utf8Array<i32>>()
+                    .unwrap()
+                    .values_iter()
+                    .map(|s| {
+                        let res: [u8; 16] =
+                            Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap();
+                        Some(res)
+                    })
+                    .for_each(|item| acc.push(item));
+            }
+        };
+    });
+    let acc = acc.as_box();
+    Ok(FieldArray::new(new_field, acc))
+}
+
+/// Main entrypoint for series conversion. By default it converts the arrays as is, but for columns that are converted by array_to_series,
+/// we need to convert back to the original type used in POD5 tables.
 fn series_to_array(series: Series) -> FieldArray {
     let name = series.name().clone();
     let field = series
@@ -107,57 +298,25 @@ fn series_to_array(series: Series) -> FieldArray {
         .to_arrow_field(name.clone(), CompatLevel::newest());
     let chunks = series.into_chunks();
     match (field.name.as_str(), &field.dtype) {
-        ("minknow.vbz", _) => {
-            let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
-                name: name.clone(),
-                inner: ArrowDataType::LargeBinary,
-                metadata: None,
-            }));
-            let new_field = ArrowField::new(name.clone(), new_dt, true);
-            todo!()
+        ("minknow.vbz", _) => minknow_vbz_to_large_binary(&field, chunks).unwrap(),
+        ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(&field, chunks).unwrap(),
+        _ => {
+            let chunks = chunks.iter().map(|b| b.as_ref()).collect::<Vec<_>>();
+            // TODO: make_growable can panic for certain types
+            // If there is a panic, check here to confirm if the type is at issue
+            // https://docs.rs/polars-arrow/0.46.0/src/polars_arrow/array/growable/mod.rs.html#89
+            let acc = make_growable(&chunks, true, chunks.len()).as_box();
+            FieldArray::new(field, acc)
         }
-        ("minknow.uuid", _) => {
-            let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
-                name: name.clone(),
-                inner: ArrowDataType::FixedSizeBinary(16),
-                metadata: None,
-            }));
-            let new_field = ArrowField::new(name.clone(), new_dt, true);
-            let chunks = chunks
-                .into_iter()
-                .map(|chunk| {
-                    let arr = match &field.dtype {
-                        ArrowDataType::Utf8View => chunk
-                            .as_any()
-                            .downcast_ref::<Utf8ViewArray>()
-                            .unwrap()
-                            .values_iter()
-                            .map(|s| {
-                                Some(Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap())
-                            })
-                            .collect::<Vec<Option<[u8; 16]>>>(),
-                        _ => chunk
-                            .as_any()
-                            .downcast_ref::<Utf8Array<i32>>()
-                            .unwrap()
-                            .values_iter()
-                            .map(|s| {
-                                Some(Vec::from(s.parse::<Uuid>().unwrap()).try_into().unwrap())
-                            })
-                            .collect::<Vec<Option<[u8; 16]>>>(),
-                    };
-                    FixedSizeBinaryArray::from(&arr).boxed()
-                })
-                .collect::<Vec<_>>();
-            FieldArray::new(new_field, chunks)
-        }
-        _ => FieldArray::new(field, chunks),
     }
 }
 
 #[cfg(test)]
 mod test {
-    use polars::prelude::NamedFrom;
+    use std::sync::Arc;
+
+    use polars::{df, prelude::NamedFrom};
+    use polars_arrow::io::ipc::write::WriteOptions;
 
     use super::*;
 
@@ -172,8 +331,41 @@ mod test {
     fn test_series_to_array_minknow_vbz() {
         let example = Some(b"test" as &[u8]);
         let series = Series::new("minknow.vbz".into(), [example]);
-        println!("{:?}", series.to_arrow(0, CompatLevel::newest()));
-        println!("{:?}", series.to_arrow(0, CompatLevel::oldest()));
-        // let farr = series_to_array(series);
+        let farr = series_to_array(series);
+    }
+
+    #[test]
+    fn test_writer() {
+        let example = Some(b"test" as &[u8]);
+        let series = Series::new("minknow.vbz".into(), [example]);
+        let farr = vec![series_to_array(series)];
+        let schema = Arc::new(field_arrs_to_schema(&farr));
+        let chunk = field_arrs_to_record_batch(farr, schema.clone());
+
+        let buf: Vec<u8> = Vec::new();
+        let mut writer =
+            ArrowFileWriter::try_new(buf, schema.clone(), None, WriteOptions::default()).unwrap();
+        writer.write(&chunk, None).unwrap();
+        writer.finish().unwrap();
+    }
+
+    #[test]
+    fn test_df() {
+        let df = df!("minknow.uuid" => ["67e55044-10b1-426f-9247-bb680e5fe0c8", "67e55044-10b1-426f-9247-bb680e5fe0c8"],
+                                "minknow.vbz" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32, 0.4f32].iter().collect::<Series>()],
+                                "samples" => [2u32, 2u32],
+                            ).unwrap();
+        println!("{df:?}");
+        let field_arrays = df
+            .iter()
+            .map(|s| series_to_array(s.clone()))
+            .collect::<Vec<_>>();
+        let schema = Arc::new(field_arrs_to_schema(&field_arrays));
+        let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
+        let buf: Vec<u8> = Vec::new();
+        let mut writer =
+            ArrowFileWriter::try_new(buf, schema.clone(), None, WriteOptions::default()).unwrap();
+        writer.write(&chunk, None).unwrap();
+        writer.finish().unwrap();
     }
 }

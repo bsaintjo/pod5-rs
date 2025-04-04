@@ -60,6 +60,7 @@ uuid = "1.14.0"
 log = "0.4.25"
 arrow = "54.2.0"
 lru = "0.13.0"
+polars-schema = "0.46.0"
 
 
 [dev-dependencies]
