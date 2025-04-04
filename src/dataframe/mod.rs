@@ -128,6 +128,23 @@ impl SignalDataFrame {
         self
     }
 
+    /// Convert f32 picoamps signal data into i16 ADC
+    pub(crate) fn to_adc(mut self, calibration: &Calibration) -> Self {
+        let adcs = self.0["minknow.uuid"]
+            .str()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .map(|rid| calibration.0.get(rid).unwrap())
+            .collect::<Vec<_>>();
+        let offsets = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.offset)));
+        let scale = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.scale)));
+        let res = (&self.0["minknow.vbz"] / &scale).unwrap();
+        let res = (res - offsets).unwrap();
+        self.0.with_column(res).unwrap();
+        self
+    }
+
     /// Get the inner `polars` DataFrame.
     pub fn into_inner(self) -> DataFrame {
         self.0

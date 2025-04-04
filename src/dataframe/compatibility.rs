@@ -105,6 +105,7 @@ struct TableWriter<T, W: Write> {
     table: PhantomData<T>,
 }
 
+#[derive(Debug)]
 struct FieldArray {
     field: pl::ArrowField,
     arr: Box<dyn Array>,
@@ -179,7 +180,7 @@ fn minknow_vbz_to_large_binary(
                     }
                 ) =>
             {
-                let items = chunk
+                chunk
                     .as_any()
                     .downcast_ref::<ListArray<i64>>()
                     .unwrap()
@@ -194,10 +195,10 @@ fn minknow_vbz_to_large_binary(
                                 .iter()
                                 .copied()
                                 .collect::<Vec<_>>();
-                            let res = svb16::encode(&res).unwrap();
-                            todo!()
+                            
+                            svb16::encode(&res).unwrap()
                         })
-                    });
+                    }).for_each(|item| acc.push(item));
             }
 
             // Decompressed signal picoamp data
