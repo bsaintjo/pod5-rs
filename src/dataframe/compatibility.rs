@@ -383,7 +383,7 @@ mod test {
                                                           "samples" => [2u32, 2u32],
                                                          ).unwrap());
         println!("{df:?}");
-        let df = df.to_adc(&cal);
+        let df = df.with_adc(&cal);
         println!("{df:?}");
         let field_arrays =
             df.0.iter()

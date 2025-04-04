@@ -129,7 +129,7 @@ impl SignalDataFrame {
     }
 
     /// Convert f32 picoamps signal data into i16 ADC
-    pub(crate) fn to_adc(mut self, calibration: &Calibration) -> Self {
+    pub(crate) fn with_adc(mut self, calibration: &Calibration) -> Self {
         let adcs = self.0["minknow.uuid"]
             .str()
             .unwrap()
@@ -140,7 +140,10 @@ impl SignalDataFrame {
         let offsets = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.offset)));
         let scale = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.scale)));
         let res = (&self.0["minknow.vbz"] / &scale).unwrap();
-        let res = (res - offsets).unwrap().cast(&pl::DataType::List(Box::new(pl::DataType::Int16))).unwrap();
+        let res = (res - offsets)
+            .unwrap()
+            .cast(&pl::DataType::List(Box::new(pl::DataType::Int16)))
+            .unwrap();
         self.0.with_column(res).unwrap();
         self
     }
@@ -330,10 +333,7 @@ pub(crate) fn decompress_signal_series(
             Series::from_iter(decoded)
         })
         .collect::<Vec<_>>();
-    Ok(Some(Column::from(Series::new(
-        "decompressed".into(),
-        out,
-    ))))
+    Ok(Some(Column::from(Series::new("decompressed".into(), out))))
 }
 
 #[derive(Debug)]
