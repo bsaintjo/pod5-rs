@@ -24,9 +24,14 @@ def test_signal_iter():
             aggregated = (
                 sdf.group_by("minknow.uuid")
                 .agg(pl.col("minknow.vbz").explode(), pl.col("samples").sum())
-                .with_columns(
-                    idx=pl.int_ranges(pl.col("minknow.vbz").list.len())
-                )
+                .with_columns(idx=pl.int_ranges(pl.col("minknow.vbz").list.len()))
                 .explode("minknow.vbz", "idx")
             )
             print(aggregated)
+
+
+def test_writer():
+    with pytest.raises(Exception):
+        with p5f.FrameWriter("test.pod5") as writer:
+            writer.write(p5f.TableType())
+            writer.write(p5f.TableType())

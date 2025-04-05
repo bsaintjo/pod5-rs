@@ -25,6 +25,67 @@ impl SignalIter {
     }
 }
 
+struct FileWriter;
+
+#[pyclass(eq, eq_int)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TableType {
+    Signal,
+    Reads,
+    RunInfo,
+    OtherIndex
+}
+
+#[pyclass]
+struct SignalTable;
+
+#[pymethods]
+impl TableType {
+    #[new]
+    fn new() -> Self {
+        Self::Signal
+    }
+}
+
+#[pyclass]
+struct FrameWriter {
+    path: PathBuf,
+    writer: Option<FileWriter>,
+}
+
+#[pymethods]
+impl FrameWriter {
+    #[new]
+    fn new(_path: PathBuf) -> PyResult<Self> {
+        // Ok(Self { path, writer: None })
+        Err(PyException::new_err("Not yet implemented"))
+    }
+
+    fn write_table(&mut self, table: &TableType) -> PyResult<()> {
+        // Implement writing logic here
+        Ok(())
+    }
+
+
+    fn open(&mut self) -> PyResult<()> {
+        Ok(())
+    }
+
+    fn close(&mut self) {
+        self.writer = None;
+    }
+
+    fn __enter__(mut me: PyRefMut<'_, Self>) -> PyResult<PyRefMut<'_, Self>> {
+        me.open()?;
+        Ok(me)
+    }
+
+    fn __exit__(&mut self, _exc_type: PyObject, _exc_val: PyObject, _exc_tb: PyObject) -> PyResult<()>{
+        self.close();
+        Ok(())
+    }
+}
+
 /// Reads a POD5 file and allows for getting various iterators over parts of the
 /// file
 #[pyclass]
