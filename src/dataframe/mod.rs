@@ -30,6 +30,7 @@ use polars_arrow::{
 use uuid::Uuid;
 
 pub(crate) mod compatibility;
+mod converters;
 
 use crate::{error::Pod5Error, svb16::decode};
 
