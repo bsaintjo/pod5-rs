@@ -1,3 +1,6 @@
+//! Writing POD5 files
+//! 
+//! Provides an interface for writing dataframes as POD5 tables.
 use std::{
     collections::HashSet, io::{Seek, Write}, marker::PhantomData, sync::Arc
 };
