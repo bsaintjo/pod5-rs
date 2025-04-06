@@ -107,7 +107,7 @@ struct TableWriter<T, W: Write> {
 }
 
 #[derive(Debug)]
-struct FieldArray {
+pub(crate) struct FieldArray {
     field: pl::ArrowField,
     arr: Box<dyn Array>,
 }
@@ -118,11 +118,11 @@ impl FieldArray {
     }
 }
 
-fn field_arrs_to_schema(farrs: &[FieldArray]) -> Schema<pl::ArrowField> {
+pub(crate) fn field_arrs_to_schema(farrs: &[FieldArray]) -> Schema<pl::ArrowField> {
     farrs.iter().map(|farr| farr.field.clone()).collect()
 }
 
-fn field_arrs_to_record_batch(
+pub(crate) fn field_arrs_to_record_batch(
     farrs: Vec<FieldArray>,
     schema: ArrowSchemaRef,
 ) -> RecordBatchT<Box<dyn Array>> {
@@ -289,7 +289,7 @@ fn minknow_uuid_to_fixed_size_binary(
 /// Main entrypoint for series conversion. By default it converts the arrays as
 /// is, but for columns that are converted by array_to_series, we need to
 /// convert back to the original type used in POD5 tables.
-fn series_to_array(series: Series) -> FieldArray {
+pub(crate) fn series_to_array(series: Series) -> FieldArray {
     let name = series.name().clone();
     let field = series
         .dtype()

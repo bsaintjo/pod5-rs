@@ -12,6 +12,7 @@ pub use polars_arrow;
 use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
 
 mod arrow;
+pub mod writer;
 pub mod dataframe;
 pub mod error;
 pub mod footer;

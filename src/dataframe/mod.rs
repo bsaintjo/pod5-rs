@@ -261,6 +261,15 @@ impl Iterator for ReadDataFrameIter {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct RunInfoDataFrame(pub(crate) DataFrame);
+
+impl RunInfoDataFrame {
+    pub fn into_inner(self) -> polars::prelude::DataFrame {
+        self.0
+    }
+}
+
 pub(crate) fn get_next_df(
     fields: &[Field],
     table_reader: &mut FileReader<Cursor<Vec<u8>>>,
@@ -339,13 +348,13 @@ pub(crate) fn decompress_signal_series(
 }
 
 #[derive(Debug)]
-struct AdcData {
-    offset: f32,
-    scale: f32,
+pub(crate) struct AdcData {
+    pub(crate) offset: f32,
+    pub(crate) scale: f32,
 }
 
 #[derive(Debug)]
-pub struct Calibration(HashMap<String, AdcData>);
+pub struct Calibration(pub(crate) HashMap<String, AdcData>);
 
 impl Calibration {
     fn from_read_dfs(iter: ReadDataFrameIter) -> Self {
