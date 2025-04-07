@@ -11,8 +11,44 @@ use pyo3_polars::PyDataFrame;
 #[pyclass]
 struct SignalIter(pod5::dataframe::SignalDataFrameIter);
 
+
 #[pymethods]
 impl SignalIter {
+    fn __iter__(me: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        me
+    }
+
+    fn __next__(mut me: PyRefMut<'_, Self>) -> Option<PyDataFrame> {
+        match me.0.next() {
+            Some(Ok(x)) => Some(PyDataFrame(x.into_inner())),
+            _ => None,
+        }
+    }
+}
+
+#[pyclass]
+struct RunInfoIter(pod5::dataframe::RunInfoDataFrameIter);
+
+#[pymethods]
+impl RunInfoIter {
+    fn __iter__(me: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        me
+    }
+
+    fn __next__(mut me: PyRefMut<'_, Self>) -> Option<PyDataFrame> {
+        match me.0.next() {
+            Some(Ok(x)) => Some(PyDataFrame(x.into_inner())),
+            _ => None,
+        }
+    }
+}
+
+#[pyclass]
+struct ReadIter(pod5::dataframe::ReadDataFrameIter);
+
+
+#[pymethods]
+impl ReadIter {
     fn __iter__(me: PyRef<'_, Self>) -> PyRef<'_, Self> {
         me
     }
@@ -63,7 +99,11 @@ impl FrameWriter {
 
     fn write_table(&mut self, table: &TableType) -> PyResult<()> {
         // Implement writing logic here
-        Ok(())
+        Err(PyException::new_err("Not yet implemented"))
+    }
+
+    fn write_signal_tables(&mut self, tables: &mut SignalIter) -> PyResult<()>{
+        Err(PyException::new_err("Not yet implemented"))
     }
 
 
@@ -122,8 +162,13 @@ impl FrameReader {
         self.close()
     }
 
-    fn reads(&self) {
-        todo!()
+    fn reads(&mut self) -> PyResult<ReadIter>{
+        self.reader
+            .as_mut()
+            .ok_or_else(|| PyException::new_err("Must call read method or use context manager"))?
+            .read_dfs()
+            .map(ReadIter)
+            .map_err(|_| PyException::new_err("Missing SignalTable"))
     }
 
     /// Return an iterator over signal data represented as polars DataFrames
@@ -136,8 +181,13 @@ impl FrameReader {
             .map_err(|_| PyException::new_err("Missing SignalTable"))
     }
 
-    fn run_info(&self) {
-        todo!()
+    fn run_info(&mut self) -> PyResult<RunInfoIter> {
+        self.reader
+            .as_mut()
+            .ok_or_else(|| PyException::new_err("Must call read method or use context manager"))?
+            .run_info_dfs()
+            .map(RunInfoIter)
+            .map_err(|_| PyException::new_err("Missing SignalTable"))
     }
 }
 

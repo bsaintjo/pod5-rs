@@ -35,3 +35,13 @@ def test_writer():
         with p5f.FrameWriter("test.pod5") as writer:
             writer.write(p5f.TableType())
             writer.write(p5f.TableType())
+
+
+def test_reader_writer_roundtrip():
+    with (
+        p5f.FrameReader("../extra/multi_fast5_zip_v3.pod5") as reader,
+        p5f.FrameWriter("test.pod5") as writer,
+    ):
+        writer.write_iter(reader.signal())
+        # for sdf in reader.signal():
+        #     writer.write(sdf)
