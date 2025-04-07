@@ -218,6 +218,20 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
+    pub fn write_table_iter<I, D>(&mut self, iter: I) -> Result<(), WriteError>
+    where
+        I: Iterator<Item = D>,
+        D: IntoTable,
+    {
+        self.write_tables_with(|guard| {
+            for df in iter {
+                guard.write_table(df)?;
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+
     /// Write the flatbuffers footer and last signature bits to finish writing the file.
     pub fn finish(mut self) -> Result<(), WriteError> {
         self._finish()?;
