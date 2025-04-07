@@ -12,12 +12,12 @@ pub use polars_arrow;
 use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
 
 mod arrow;
-pub mod writer;
 pub mod dataframe;
 pub mod error;
 pub mod footer;
 pub mod reader;
 pub mod svb16;
+pub mod writer;
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
@@ -94,7 +94,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        dataframe::compatibility::array_to_series, footer::footer_generated::minknow::reads_format::Footer,
+        dataframe::compatibility::array_to_series,
+        footer::footer_generated::minknow::reads_format::Footer,
     };
 
     #[test]

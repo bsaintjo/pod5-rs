@@ -11,7 +11,6 @@ use pyo3_polars::PyDataFrame;
 #[pyclass]
 struct SignalIter(pod5::dataframe::SignalDataFrameIter);
 
-
 #[pymethods]
 impl SignalIter {
     fn __iter__(me: PyRef<'_, Self>) -> PyRef<'_, Self> {
@@ -46,7 +45,6 @@ impl RunInfoIter {
 #[pyclass]
 struct ReadIter(pod5::dataframe::ReadDataFrameIter);
 
-
 #[pymethods]
 impl ReadIter {
     fn __iter__(me: PyRef<'_, Self>) -> PyRef<'_, Self> {
@@ -69,7 +67,7 @@ enum TableType {
     Signal,
     Reads,
     RunInfo,
-    OtherIndex
+    OtherIndex,
 }
 
 #[pyclass]
@@ -102,10 +100,9 @@ impl FrameWriter {
         Err(PyException::new_err("Not yet implemented"))
     }
 
-    fn write_signal_tables(&mut self, tables: &mut SignalIter) -> PyResult<()>{
+    fn write_signal_tables(&mut self, tables: &mut SignalIter) -> PyResult<()> {
         Err(PyException::new_err("Not yet implemented"))
     }
-
 
     fn open(&mut self) -> PyResult<()> {
         Ok(())
@@ -120,7 +117,12 @@ impl FrameWriter {
         Ok(me)
     }
 
-    fn __exit__(&mut self, _exc_type: PyObject, _exc_val: PyObject, _exc_tb: PyObject) -> PyResult<()>{
+    fn __exit__(
+        &mut self,
+        _exc_type: PyObject,
+        _exc_val: PyObject,
+        _exc_tb: PyObject,
+    ) -> PyResult<()> {
         self.close();
         Ok(())
     }
@@ -162,7 +164,7 @@ impl FrameReader {
         self.close()
     }
 
-    fn reads(&mut self) -> PyResult<ReadIter>{
+    fn reads(&mut self) -> PyResult<ReadIter> {
         self.reader
             .as_mut()
             .ok_or_else(|| PyException::new_err("Must call read method or use context manager"))?

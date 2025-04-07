@@ -182,16 +182,16 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
-    /// Write a table to the POD5 file using a write guard. At the end of the closure,
-    /// the section marker is written to the file, and the Writer is updated with
-    /// the written content type.
+    /// Write a table to the POD5 file using a write guard. At the end of the
+    /// closure, the section marker is written to the file, and the Writer
+    /// is updated with the written content type.
     ///
-    /// This is primarily useful for writing multiple tables correctly. If you only need
-    /// to write a single table, use the `write_table` method.
+    /// This is primarily useful for writing multiple tables correctly. If you
+    /// only need to write a single table, use the `write_table` method.
     ///
-    /// This method will return an error if the content type is not `OtherIndex` and
-    /// the content type has already been written. This is to prevent writing multiple
-    /// tables of the same type to the file.
+    /// This method will return an error if the content type is not `OtherIndex`
+    /// and the content type has already been written. This is to prevent
+    /// writing multiple tables of the same type to the file.
     pub fn write_tables_with<F, T>(&mut self, inserter: F) -> Result<(), WriteError>
     where
         F: FnOnce(&mut TableWriteGuard<W, T>) -> Result<(), WriteError>,
@@ -208,11 +208,12 @@ impl<W: Write + Seek> Writer<W> {
     /// Write a single table to the POD5 file. The writer is updated with
     ///
     /// This is a convienence function for writing a single table to the file.
-    /// If you need to write multiple tables, use the `write_tables_with` method.
+    /// If you need to write multiple tables, use the `write_tables_with`
+    /// method.
     ///
-    /// Similar to writing with the `write_tables_with` method, this will return an
-    /// error if the content type is not `OtherIndex` and the content type has
-    /// already been written.
+    /// Similar to writing with the `write_tables_with` method, this will return
+    /// an error if the content type is not `OtherIndex` and the content
+    /// type has already been written.
     pub fn write_table<D: IntoTable>(&mut self, df: D) -> Result<(), WriteError> {
         self.write_tables_with(|guard| guard.write_table(df))?;
         Ok(())
@@ -232,7 +233,8 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
-    /// Write the flatbuffers footer and last signature bits to finish writing the file.
+    /// Write the flatbuffers footer and last signature bits to finish writing
+    /// the file.
     pub fn finish(mut self) -> Result<(), WriteError> {
         self._finish()?;
         Ok(())
@@ -369,9 +371,8 @@ mod test {
 
     use polars::{df, series::Series};
 
-    use crate::reader::Reader;
-
     use super::*;
+    use crate::reader::Reader;
 
     #[test]
     fn test_writer_reader_roundtrip() {

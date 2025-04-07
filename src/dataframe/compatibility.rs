@@ -306,8 +306,7 @@ mod test {
     use std::sync::Arc;
 
     use polars::{df, prelude::NamedFrom};
-    use polars_arrow::io::ipc::write::WriteOptions;
-    use polars_arrow::io::ipc::write::FileWriter as ArrowFileWriter;
+    use polars_arrow::io::ipc::write::{FileWriter as ArrowFileWriter, WriteOptions};
 
     use super::*;
     use crate::dataframe::{AdcData, Calibration, SignalDataFrame};
