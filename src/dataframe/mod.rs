@@ -261,8 +261,37 @@ impl Iterator for ReadDataFrameIter {
     }
 }
 
+pub struct RunInfoDataFrameIter {
+    pub(crate) fields: Vec<Field>,
+    pub(crate) table_reader: FileReader<Cursor<Vec<u8>>>,
+}
+
+impl RunInfoDataFrameIter {
+    pub(crate) fn new<R: Read + Seek>(
+        offset: u64,
+        length: u64,
+        file: &mut R,
+    ) -> Result<Self, Pod5Error> {
+        let (fields, table_reader) =
+            read_to_dataframe(offset, length, Pod5Error::RunInfoTableMissing, file)?;
+        Ok(Self {
+            fields,
+            table_reader,
+        })
+    }
+}
+
+impl Iterator for RunInfoDataFrameIter {
+    type Item = Result<RunInfoDataFrame, Pod5Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let df = get_next_df(&self.fields, &mut self.table_reader);
+        df.map(|res| res.map(RunInfoDataFrame))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct RunInfoDataFrame(pub(crate) DataFrame);
+pub struct RunInfoDataFrame(pub(crate) DataFrame);
 
 impl RunInfoDataFrame {
     pub fn into_inner(self) -> polars::prelude::DataFrame {

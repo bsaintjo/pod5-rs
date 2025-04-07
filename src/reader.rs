@@ -2,7 +2,7 @@
 use std::io::{Read, Seek, SeekFrom};
 
 use crate::{
-    dataframe::{ReadDataFrameIter, SignalDataFrameIter},
+    dataframe::{ReadDataFrameIter, RunInfoDataFrameIter, SignalDataFrameIter},
     error::Pod5Error,
     footer::ParsedFooter,
 };
@@ -55,11 +55,11 @@ where
         Ok(iter)
     }
 
-    pub fn run_info_dfs(&mut self) -> Result<ReadDataFrameIter, Pod5Error> {
+    pub fn run_info_dfs(&mut self) -> Result<RunInfoDataFrameIter, Pod5Error> {
         let table = self.footer.run_info_table()?;
         let offset = table.as_ref().offset() as u64;
         let length = table.as_ref().length() as u64;
-        let iter = ReadDataFrameIter::new(offset, length, &mut self.reader)?;
+        let iter = RunInfoDataFrameIter::new(offset, length, &mut self.reader)?;
         Ok(iter)
     }
 }

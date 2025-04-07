@@ -138,7 +138,7 @@ impl ParsedFooter {
     pub(crate) fn run_info_table(&self) -> Result<RunInfoTable, Pod5Error> {
         Ok(RunInfoTable(self.find_table(
             ContentType::RunInfoTable,
-            Pod5Error::RunInfoTable,
+            Pod5Error::RunInfoTableMissing,
         )?))
     }
 }

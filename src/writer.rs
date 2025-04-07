@@ -1,13 +1,16 @@
 //! Writing POD5 files
-//! 
+//!
 //! Provides an interface for writing dataframes as POD5 tables.
 use std::{
-    collections::HashSet, io::{Seek, Write}, marker::PhantomData, sync::Arc
+    collections::HashSet,
+    io::{Seek, Write},
+    marker::PhantomData,
+    sync::Arc,
 };
 
 use polars::{error::PolarsError, prelude::ArrowField};
 use polars_arrow::{
-    io::ipc::write::{FileWriter, WriteOptions},
+    io::ipc::write::{FileWriter, WriteOptions as PlWriteOptions},
     record_batch::RecordBatch,
 };
 use polars_schema::Schema;
@@ -46,6 +49,9 @@ pub enum WriteError {
 
     #[error("Writer: content type not other and already written: {0:?}")]
     ContentTypeAlreadyWritten(ContentType),
+
+    #[error("Writer: Failed to rewind underlying writer: {0}")]
+    FailedToRewind(std::io::Error),
 }
 
 pub struct TableBatch {
@@ -80,7 +86,7 @@ impl IntoTable for ReadDataFrame {
 }
 impl IntoTable for RunInfoDataFrame {
     fn into_record_batch(self) -> Result<TableBatch, PolarsError> {
-        todo!()
+        _into_record_batch(&self.0)
     }
 
     fn content_type() -> ContentType {
@@ -106,6 +112,11 @@ struct TableInfo {
     content_type: ContentType,
 }
 
+#[derive(Debug, Clone)]
+struct WriteOptions {
+    allow_overwrite: bool,
+}
+
 pub struct Writer<W>
 where
     W: Write + Seek,
@@ -115,7 +126,7 @@ where
     section_marker: Uuid,
     tables: Vec<TableInfo>,
     contents_writtens: HashSet<ContentType>,
-    footer_wrttien: bool,
+    footer_written: bool,
 }
 
 impl<W: Write + Seek> Writer<W> {
@@ -127,31 +138,41 @@ impl<W: Write + Seek> Writer<W> {
             section_marker,
             tables: Vec::new(),
             contents_writtens: HashSet::new(),
-            footer_wrttien: false,
+            footer_written: false,
         }
     }
 
-    pub fn write_signature(&mut self) -> Result<(), WriteError> {
+    pub(crate) fn into_inner(self) -> W {
+        self.writer
+    }
+
+    pub(crate) fn write_signature(&mut self) -> Result<(), WriteError> {
         self.writer
             .write_all(&FILE_SIGNATURE)
             .map_err(WriteError::FailedToWriteSignature)?;
         Ok(())
     }
 
-    pub fn write_section_marker(&mut self) -> Result<(), WriteError> {
+    pub(crate) fn write_section_marker(&mut self) -> Result<(), WriteError> {
         self.writer
             .write_all(self.section_marker.as_bytes())
             .map_err(WriteError::FailedToWriteSectionMarker)?;
         Ok(())
     }
 
-    pub fn from_writer(writer: W) -> Result<Self, WriteError> {
+    /// Build and intialize a new POD5 Writer.
+    ///
+    /// This will write the POD5 signature and section marker to the file.
+    /// SAFETY: This will rewind the underlying writer, so it will be safe
+    /// writing to a file that has already been written to.
+    pub fn from_writer(mut writer: W) -> Result<Self, WriteError> {
+        writer.rewind().map_err(WriteError::FailedToRewind)?;
         let mut w = Self::new(writer);
         w.init()?;
         Ok(w)
     }
 
-    pub fn init(&mut self) -> Result<(), WriteError> {
+    pub(crate) fn init(&mut self) -> Result<(), WriteError> {
         self.write_signature()?;
         self.write_section_marker()?;
         self.position = self
@@ -161,7 +182,17 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
-    pub fn write_table_with<F, T>(&mut self, inserter: F) -> Result<(), WriteError>
+    /// Write a table to the POD5 file using a write guard. At the end of the closure,
+    /// the section marker is written to the file, and the Writer is updated with
+    /// the written content type.
+    ///
+    /// This is primarily useful for writing multiple tables correctly. If you only need
+    /// to write a single table, use the `write_table` method.
+    ///
+    /// This method will return an error if the content type is not `OtherIndex` and
+    /// the content type has already been written. This is to prevent writing multiple
+    /// tables of the same type to the file.
+    pub fn write_tables_with<F, T>(&mut self, inserter: F) -> Result<(), WriteError>
     where
         F: FnOnce(&mut TableWriteGuard<W, T>) -> Result<(), WriteError>,
         T: IntoTable,
@@ -174,35 +205,26 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
+    /// Write a single table to the POD5 file. The writer is updated with
+    ///
+    /// This is a convienence function for writing a single table to the file.
+    /// If you need to write multiple tables, use the `write_tables_with` method.
+    ///
+    /// Similar to writing with the `write_tables_with` method, this will return an
+    /// error if the content type is not `OtherIndex` and the content type has
+    /// already been written.
     pub fn write_table<D: IntoTable>(&mut self, df: D) -> Result<(), WriteError> {
-        let content_type = D::content_type();
-        let chunk = df.into_record_batch()?;
-        let mut writer = FileWriter::try_new(
-            &mut self.writer,
-            chunk.schema.clone(),
-            None,
-            WriteOptions::default(),
-        )?;
-        writer.write(&chunk.batch, None)?;
-        self.write_section_marker()?;
-        let new_position = self
-            .writer
-            .stream_position()
-            .map_err(WriteError::StreamPositionError)?;
-        let offset = self.position as i64;
-        let length = new_position as i64 - self.position as i64;
-        self.tables.push(TableInfo {
-            offset,
-            length,
-            content_type,
-        });
-        self.position = new_position;
-
+        self.write_tables_with(|guard| guard.write_table(df))?;
         Ok(())
     }
 
     /// Write the flatbuffers footer and last signature bits to finish writing the file.
     pub fn finish(mut self) -> Result<(), WriteError> {
+        self._finish()?;
+        Ok(())
+    }
+
+    pub(crate) fn _finish(&mut self) -> Result<(), WriteError> {
         self.write_footer_magic()?;
         self.write_footer()?;
         Ok(())
@@ -264,7 +286,7 @@ fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
 /// An scoped guard for writing a specific table type to the POD5 file.
 /// This allows for writing a table iteratively, and ensures that only one of
 /// each non-OtherIndex tables have been written.
-/// 
+///
 /// To get a TableWriteGuard, use the `write_table_with` method on the Writer.
 ///
 /// When this guard is dropped, the section marker is written to the file, and
@@ -285,7 +307,10 @@ where
     T: IntoTable,
 {
     fn new(inner: &'a mut Writer<W>) -> Self {
-        Self { inner, table: PhantomData }
+        Self {
+            inner,
+            table: PhantomData,
+        }
     }
 
     pub fn write_table(&mut self, df: T) -> Result<(), WriteError> {
@@ -294,7 +319,7 @@ where
             &mut self.inner.writer,
             chunk.schema.clone(),
             None,
-            WriteOptions::default(),
+            PlWriteOptions::default(),
         )?;
         writer.write(&chunk.batch, None)?;
         Ok(())
@@ -347,8 +372,12 @@ mod test {
 
         let mut signals = reader.signal_dfs().unwrap();
         let signal_df = signals.next().unwrap().unwrap();
-
         writer.write_table(signal_df).unwrap();
+
+        let mut run_info = reader.run_info_dfs().unwrap();
+        let run_info_df = run_info.next().unwrap().unwrap();
+        writer.write_table(run_info_df).unwrap();
+
         writer.finish().unwrap();
     }
 

@@ -28,7 +28,7 @@ pub enum Pod5Error {
     ReadTableMissing,
 
     #[error("Missing Run Info table from POD5")]
-    RunInfoTable,
+    RunInfoTableMissing,
 
     /// Error occured in the DataFrame API from polars
     #[error("{0}")]
