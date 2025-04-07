@@ -21,7 +21,7 @@ use crate::{
         compatibility::{field_arrs_to_record_batch, field_arrs_to_schema, series_to_array},
         ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
     },
-    footer_generated::minknow::reads_format::{
+    footer::footer_generated::minknow::reads_format::{
         ContentType, EmbeddedFile, EmbeddedFileArgs, Footer, FooterArgs,
     },
     FILE_SIGNATURE,

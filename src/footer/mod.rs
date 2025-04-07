@@ -4,9 +4,11 @@ use flatbuffers::root;
 
 use crate::{
     error::Pod5Error,
-    footer_generated::minknow::reads_format::{ContentType, Footer},
+    footer::footer_generated::minknow::reads_format::{ContentType, Footer},
     FILE_SIGNATURE,
 };
+
+pub mod footer_generated;
 
 #[derive(Debug)]
 pub struct Table {

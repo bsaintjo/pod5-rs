@@ -6,7 +6,7 @@ use std::{
 
 use dataframe::compatibility::array_to_series;
 use error::Pod5Error;
-use footer_generated::minknow::reads_format::EmbeddedFile;
+use footer::footer_generated::minknow::reads_format::EmbeddedFile;
 pub use polars;
 pub use polars_arrow;
 use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
@@ -16,7 +16,6 @@ pub mod writer;
 pub mod dataframe;
 pub mod error;
 pub mod footer;
-pub mod footer_generated;
 pub mod reader;
 pub mod svb16;
 
@@ -95,7 +94,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        dataframe::compatibility::array_to_series, footer_generated::minknow::reads_format::Footer,
+        dataframe::compatibility::array_to_series, footer::footer_generated::minknow::reads_format::Footer,
     };
 
     #[test]
