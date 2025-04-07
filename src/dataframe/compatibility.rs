@@ -1,5 +1,3 @@
-use std::{io::Write, marker::PhantomData};
-
 use polars::{
     datatypes::ArrowDataType,
     prelude as pl,
@@ -13,7 +11,6 @@ use polars_arrow::{
     },
     compute::concatenate,
     datatypes::{ArrowSchemaRef, ExtensionType},
-    io::ipc::write::FileWriter as ArrowFileWriter,
     record_batch::RecordBatchT,
 };
 use polars_schema::Schema;
@@ -98,12 +95,6 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
             panic!("unimplemented datatype: {:?}", field);
         }
     }
-}
-
-struct TableWriter<T, W: Write> {
-    schema: ArrowSchemaRef,
-    writer: ArrowFileWriter<W>,
-    table: PhantomData<T>,
 }
 
 #[derive(Debug)]
@@ -316,6 +307,7 @@ mod test {
 
     use polars::{df, prelude::NamedFrom};
     use polars_arrow::io::ipc::write::WriteOptions;
+    use polars_arrow::io::ipc::write::FileWriter as ArrowFileWriter;
 
     use super::*;
     use crate::dataframe::{AdcData, Calibration, SignalDataFrame};
