@@ -42,6 +42,4 @@ def test_reader_writer_roundtrip():
         p5f.FrameReader("../extra/multi_fast5_zip_v3.pod5") as reader,
         p5f.FrameWriter("/dev/null") as writer,
     ):
-        writer.write_iter(reader.signal())
-        # for sdf in reader.signal():
-        #     writer.write(sdf)
+        writer.write_signal_tables(reader.signal())

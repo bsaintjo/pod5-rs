@@ -90,7 +90,7 @@ impl FrameWriter {
     #[new]
     fn new(path: PathBuf) -> PyResult<Self> {
         // Ok(Self { path, writer: None })
-        let file = File::open(&path)?;
+        let file = File::create(&path)?;
         let writer = Writer::from_writer(file)
             .map_err(|e| PyException::new_err(format!("Failed to open writer: {e}")))?;
         Ok(Self {
