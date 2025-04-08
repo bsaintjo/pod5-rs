@@ -1,8 +1,8 @@
 use std::{fs::File, path::PathBuf};
 
-use pod5::{polars::df, reader::Reader};
+use pod5::{polars::df, reader::Reader, writer::Writer};
 use pyo3::{
-    exceptions::{PyException, PyIOError},
+    exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,
 };
 use pyo3_polars::PyDataFrame;
@@ -59,8 +59,6 @@ impl ReadIter {
     }
 }
 
-struct FileWriter;
-
 #[pyclass(eq, eq_int)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TableType {
@@ -84,32 +82,48 @@ impl TableType {
 #[pyclass]
 struct FrameWriter {
     path: PathBuf,
-    writer: Option<FileWriter>,
+    writer: Option<Writer<File>>,
 }
 
 #[pymethods]
 impl FrameWriter {
     #[new]
-    fn new(_path: PathBuf) -> PyResult<Self> {
+    fn new(path: PathBuf) -> PyResult<Self> {
         // Ok(Self { path, writer: None })
-        Err(PyException::new_err("Not yet implemented"))
+        let file = File::open(&path)?;
+        let writer = Writer::from_writer(file)
+            .map_err(|e| PyException::new_err(format!("Failed to open writer: {e}")))?;
+        Ok(Self {
+            path,
+            writer: Some(writer),
+        })
     }
 
-    fn write_table(&mut self, table: &TableType) -> PyResult<()> {
+    fn write_table(&mut self, _table: &TableType) -> PyResult<()> {
         // Implement writing logic here
-        Err(PyException::new_err("Not yet implemented"))
+        Err(PyNotImplementedError::new_err("Not yet implemented"))
     }
 
     fn write_signal_tables(&mut self, tables: &mut SignalIter) -> PyResult<()> {
-        Err(PyException::new_err("Not yet implemented"))
+        let inner = self.writer.as_mut().unwrap();
+        let tables = &mut tables.0;
+        inner
+            .write_table_iter(tables.map(|sdf| sdf.unwrap()))
+            .map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
+        Ok(())
     }
 
     fn open(&mut self) -> PyResult<()> {
         Ok(())
     }
 
-    fn close(&mut self) {
-        self.writer = None;
+    fn close(&mut self) -> PyResult<()> {
+        if let Some(writer) = self.writer.take() {
+            writer
+                .finish()
+                .map_err(|_| PyException::new_err("Failed to finish file"))?;
+        }
+        Ok(())
     }
 
     fn __enter__(mut me: PyRefMut<'_, Self>) -> PyResult<PyRefMut<'_, Self>> {
@@ -123,7 +137,7 @@ impl FrameWriter {
         _exc_val: PyObject,
         _exc_tb: PyObject,
     ) -> PyResult<()> {
-        self.close();
+        self.close()?;
         Ok(())
     }
 }
@@ -213,6 +227,7 @@ fn pod5frame(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_function(wrap_pyfunction!(load, m)?)?;
     m.add_class::<FrameReader>()?;
+    m.add_class::<FrameWriter>()?;
     utils(m)?;
     Ok(())
 }
