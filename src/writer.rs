@@ -10,8 +10,7 @@ use std::{
 
 use polars::{error::PolarsError, prelude::ArrowField};
 use polars_arrow::{
-    io::ipc::write::{FileWriter, WriteOptions as PlWriteOptions},
-    record_batch::RecordBatch,
+    datatypes::Metadata, io::ipc::write::{FileWriter, WriteOptions as PlWriteOptions}, record_batch::RecordBatch
 };
 use polars_schema::Schema;
 use uuid::Uuid;
@@ -331,12 +330,16 @@ where
 
     pub fn write_table(&mut self, df: T) -> Result<(), WriteError> {
         let chunk = df.into_record_batch()?;
-        let mut writer = FileWriter::try_new(
+        let mut writer = FileWriter::new(
             &mut self.inner.writer,
             chunk.schema.clone(),
             None,
             PlWriteOptions::default(),
-        )?;
+        );
+        let mut metadata = Metadata::new();
+        metadata.insert(todo!(), todo!());
+        writer.set_custom_schema_metadata(Arc::new(metadata));
+        writer.start()?;
         writer.write(&chunk.batch, None)?;
         Ok(())
     }
