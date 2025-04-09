@@ -212,15 +212,6 @@ impl FrameReader {
     }
 }
 
-#[pyfunction]
-fn svb16_encode(uncompressed: Vec<i16>) -> PyResult<Vec<u8>> {
-    encode(&uncompressed).map_err(|_| PyException::new_err("Encoding failure"))
-}
-
-#[pyfunction]
-fn svb16_decode(compressed: Vec<u8>, count: usize) -> PyResult<Vec<i16>> {
-    decode(&compressed, count).map_err(|_| PyException::new_err("Decoding failure"))
-}
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
@@ -247,7 +238,6 @@ fn pod5frame(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[pymodule]
 fn utils(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let submodule = PyModule::new(m.py(), "utils")?;
     py_run!(m.py(), submodule, "import sys; sys.modules['pod5frame.utils'] = submodule");
@@ -255,4 +245,14 @@ fn utils(m: &Bound<'_, PyModule>) -> PyResult<()> {
     submodule.add_function(wrap_pyfunction!(svb16_encode, &submodule)?)?;
     m.add_submodule(&submodule)?;
     Ok(())
+}
+
+#[pyfunction]
+fn svb16_encode(uncompressed: Vec<i16>) -> PyResult<Vec<u8>> {
+    encode(&uncompressed).map_err(|_| PyException::new_err("Encoding failure"))
+}
+
+#[pyfunction]
+fn svb16_decode(compressed: Vec<u8>, count: usize) -> PyResult<Vec<i16>> {
+    decode(&compressed, count).map_err(|_| PyException::new_err("Decoding failure"))
 }
