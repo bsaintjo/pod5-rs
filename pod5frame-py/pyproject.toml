@@ -29,7 +29,7 @@ dependencies = ["polars"]
 source = "https://github.com/bsaintjo/pod5-rs/tree/dev/pod5frame-py"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "pdoc"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
