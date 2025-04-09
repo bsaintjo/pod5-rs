@@ -1,6 +1,11 @@
 use std::{fs::File, path::PathBuf};
 
-use pod5::{polars::df, reader::Reader, writer::Writer};
+use pod5::{
+    polars::df,
+    reader::Reader,
+    svb16::{decode, encode},
+    writer::Writer,
+};
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,
@@ -207,6 +212,16 @@ impl FrameReader {
     }
 }
 
+#[pyfunction]
+fn svb16_encode(uncompressed: Vec<i16>) -> PyResult<Vec<u8>> {
+    encode(&uncompressed).map_err(|_| PyException::new_err("Encoding failure"))
+}
+
+#[pyfunction]
+fn svb16_decode(compressed: Vec<u8>, count: usize) -> PyResult<Vec<i16>> {
+    decode(&compressed, count).map_err(|_| PyException::new_err("Decoding failure"))
+}
+
 /// Formats the sum of two numbers as string.
 #[pyfunction]
 fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
@@ -234,6 +249,8 @@ fn pod5frame(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 fn utils(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let utils_module = PyModule::new(m.py(), "utils")?;
+    utils_module.add_function(wrap_pyfunction!(svb16_decode, &utils_module)?)?;
+    utils_module.add_function(wrap_pyfunction!(svb16_encode, &utils_module)?)?;
     m.add_submodule(&utils_module)?;
     Ok(())
 }
