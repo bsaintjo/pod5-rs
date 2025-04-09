@@ -8,7 +8,7 @@ use pod5::{
 };
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
-    prelude::*,
+    prelude::*, py_run,
 };
 use pyo3_polars::PyDataFrame;
 
@@ -247,10 +247,12 @@ fn pod5frame(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+#[pymodule]
 fn utils(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    let utils_module = PyModule::new(m.py(), "utils")?;
-    utils_module.add_function(wrap_pyfunction!(svb16_decode, &utils_module)?)?;
-    utils_module.add_function(wrap_pyfunction!(svb16_encode, &utils_module)?)?;
-    m.add_submodule(&utils_module)?;
+    let submodule = PyModule::new(m.py(), "utils")?;
+    py_run!(m.py(), submodule, "import sys; sys.modules['pod5frame.utils'] = submodule");
+    submodule.add_function(wrap_pyfunction!(svb16_decode, &submodule)?)?;
+    submodule.add_function(wrap_pyfunction!(svb16_encode, &submodule)?)?;
+    m.add_submodule(&submodule)?;
     Ok(())
 }
