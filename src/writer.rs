@@ -10,7 +10,9 @@ use std::{
 
 use polars::{error::PolarsError, prelude::ArrowField};
 use polars_arrow::{
-    datatypes::Metadata, io::ipc::write::{FileWriter, WriteOptions as PlWriteOptions}, record_batch::RecordBatch
+    datatypes::Metadata,
+    io::ipc::write::{FileWriter, StreamWriter, WriteOptions as PlWriteOptions},
+    record_batch::RecordBatch,
 };
 use polars_schema::Schema;
 use uuid::Uuid;
@@ -201,6 +203,7 @@ impl<W: Write + Seek> Writer<W> {
             return Err(WriteError::ContentTypeAlreadyWritten(new_content));
         }
         inserter(&mut TableWriteGuard::new(self))?;
+        self.end_table(new_content)?;
         Ok(())
     }
 
@@ -214,8 +217,7 @@ impl<W: Write + Seek> Writer<W> {
     /// an error if the content type is not `OtherIndex` and the content
     /// type has already been written.
     pub fn write_table<D: IntoTable>(&mut self, df: D) -> Result<(), WriteError> {
-        self.write_tables_with(|guard| guard.write_table(df))?;
-        Ok(())
+        self.write_tables_with(|guard| guard.write_table(df))
     }
 
     pub fn write_table_iter<I, D>(&mut self, iter: I) -> Result<(), WriteError>
@@ -228,7 +230,22 @@ impl<W: Write + Seek> Writer<W> {
                 guard.write_table(df)?;
             }
             Ok(())
-        })?;
+        })
+    }
+
+    fn end_table(&mut self, content_type: ContentType) -> Result<(), WriteError> {
+        self.write_section_marker().unwrap();
+        let new_position = self
+            .writer
+            .stream_position()
+            .map_err(WriteError::StreamPositionError)?;
+        let offset = self.position as i64;
+        let length = new_position as i64 - self.position as i64;
+        self.tables.push(TableInfo {
+            offset,
+            length,
+            content_type,
+        });
         Ok(())
     }
 
@@ -260,6 +277,16 @@ impl<W: Write + Seek> Writer<W> {
             .write_all(&footer)
             .map_err(WriteError::FailedToWriteFooter)?;
         Ok(())
+    }
+}
+
+impl<W: Write + Seek> Write for Writer<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.writer.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
     }
 }
 
@@ -298,6 +325,26 @@ fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
     builder.finished_data().to_vec()
 }
 
+/// When starting to write an Arrow IPC file, there are a few things that need to be set up
+/// and can only be called once.
+/// 1) initialize the polars_arrow FileWriter
+/// 2) Set the custom metadata
+/// 3) call FileWriter::start
+/// 
+/// Order to do #1, we need to have the Schema for the table we want to write. Either 
+/// A) we need to know it ahead of time, which is possible since the TableWriteGuard has a 
+/// T enforce writing the same DataFrame. We would need to store the schemas for regular POD5
+/// files for the non-OtherIndex tables.
+/// B) Use the TableWriter enum  as below. On first pass, before things have been initialized
+/// We do #1, #2, #3, and change to the PostInit value.
+enum TableWriter<'a, W>
+where
+    W: Write + Seek,
+{
+    PreInit(&'a mut Writer<W>),
+    PostInit(FileWriter<&'a mut Writer<W>>),
+}
+
 /// An scoped guard for writing a specific table type to the POD5 file.
 /// This allows for writing a table iteratively, and ensures that only one of
 /// each non-OtherIndex tables have been written.
@@ -312,7 +359,8 @@ where
     W: Write + Seek,
     T: IntoTable,
 {
-    inner: &'a mut Writer<W>,
+    inner: Option<TableWriter<'a, W>>,
+    metadata: Arc<Metadata>,
     table: PhantomData<T>,
 }
 
@@ -322,25 +370,32 @@ where
     T: IntoTable,
 {
     fn new(inner: &'a mut Writer<W>) -> Self {
+        let mut metadata = Metadata::new();
+        metadata.insert("MINKNOW:pod5_version".into(), "0.3.0".into());
+        metadata.insert("MINKNOW:software".into(), "pod5-rs 0.1.0".into());
+        metadata.insert("MINKNOW:file_identifier".into(), "unimplemented".into());
         Self {
-            inner,
+            inner: Some(TableWriter::PreInit(inner)),
             table: PhantomData,
+            metadata: Arc::new(metadata),
         }
     }
 
     pub fn write_table(&mut self, df: T) -> Result<(), WriteError> {
         let chunk = df.into_record_batch()?;
-        let mut writer = FileWriter::new(
-            &mut self.inner.writer,
-            chunk.schema.clone(),
-            None,
-            PlWriteOptions::default(),
-        );
-        let mut metadata = Metadata::new();
-        metadata.insert(todo!(), todo!());
-        writer.set_custom_schema_metadata(Arc::new(metadata));
-        writer.start()?;
-        writer.write(&chunk.batch, None)?;
+        match self.inner.take() {
+            Some(TableWriter::PreInit(writer)) => {
+                let mut writer =
+                    FileWriter::new(writer, chunk.schema.clone(), None, Default::default());
+                writer.set_custom_schema_metadata(self.metadata.clone());
+                writer.start()?;
+                self.inner = Some(TableWriter::PostInit(writer));
+            }
+            post @ Some(_) => {
+                self.inner = post;
+            }
+            None => unreachable!()
+        }
         Ok(())
     }
 }
@@ -351,20 +406,12 @@ where
     T: IntoTable,
 {
     fn drop(&mut self) {
-        self.inner.write_section_marker().unwrap();
-        let new_position = self
-            .inner
-            .writer
-            .stream_position()
-            .map_err(WriteError::StreamPositionError)
-            .unwrap();
-        let offset = self.inner.position as i64;
-        let length = new_position as i64 - self.inner.position as i64;
-        self.inner.tables.push(TableInfo {
-            offset,
-            length,
-            content_type: T::content_type(),
-        });
+        if let Some(TableWriter::PostInit(mut x)) = self.inner.take() {
+            x.finish().unwrap();
+        } else {
+            // writer is always Some
+            unreachable!()
+        }
     }
 }
 
