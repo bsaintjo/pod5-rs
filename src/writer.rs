@@ -9,11 +9,7 @@ use std::{
 };
 
 use polars::{error::PolarsError, prelude::ArrowField};
-use polars_arrow::{
-    datatypes::Metadata,
-    io::ipc::write::{FileWriter, StreamWriter, WriteOptions as PlWriteOptions},
-    record_batch::RecordBatch,
-};
+use polars_arrow::{datatypes::Metadata, io::ipc::write::FileWriter, record_batch::RecordBatch};
 use polars_schema::Schema;
 use uuid::Uuid;
 
@@ -270,12 +266,16 @@ impl<W: Write + Seek> Writer<W> {
     }
 
     fn write_footer(&mut self) -> Result<(), WriteError> {
-        let mut footer = build_footer2(&self.tables);
-        let padding_len = footer.len() % 8;
-        footer.extend_from_slice(&vec![0; padding_len]);
-        self.writer
-            .write_all(&footer)
-            .map_err(WriteError::FailedToWriteFooter)?;
+        if !self.footer_written {
+            let mut footer = build_footer2(&self.tables);
+            let padding_len = footer.len() % 8;
+            footer.extend_from_slice(&vec![0; padding_len]);
+            self.writer
+                .write_all(&footer)
+                .map_err(WriteError::FailedToWriteFooter)?;
+        } else {
+            log::warn!("Footer was already written but attempted to write one anyways.")
+        }
         Ok(())
     }
 }
@@ -325,18 +325,18 @@ fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
     builder.finished_data().to_vec()
 }
 
-/// When starting to write an Arrow IPC file, there are a few things that need to be set up
-/// and can only be called once.
+/// When starting to write an Arrow IPC file, there are a few things that need
+/// to be set up and can only be called once.
 /// 1) initialize the polars_arrow FileWriter
 /// 2) Set the custom metadata
 /// 3) call FileWriter::start
-/// 
-/// Order to do #1, we need to have the Schema for the table we want to write. Either 
-/// A) we need to know it ahead of time, which is possible since the TableWriteGuard has a 
-/// T enforce writing the same DataFrame. We would need to store the schemas for regular POD5
-/// files for the non-OtherIndex tables.
-/// B) Use the TableWriter enum  as below. On first pass, before things have been initialized
-/// We do #1, #2, #3, and change to the PostInit value.
+///
+/// Order to do #1, we need to have the Schema for the table we want to write.
+/// Either A) we need to know it ahead of time, which is possible since the
+/// TableWriteGuard has a T enforce writing the same DataFrame. We would need to
+/// store the schemas for regular POD5 files for the non-OtherIndex tables.
+/// B) Use the TableWriter enum  as below. On first pass, before things have
+/// been initialized We do #1, #2, #3, and change to the PostInit value.
 enum TableWriter<'a, W>
 where
     W: Write + Seek,
@@ -389,12 +389,14 @@ where
                     FileWriter::new(writer, chunk.schema.clone(), None, Default::default());
                 writer.set_custom_schema_metadata(self.metadata.clone());
                 writer.start()?;
+                writer.write(&chunk.batch, None)?;
                 self.inner = Some(TableWriter::PostInit(writer));
             }
-            post @ Some(_) => {
-                self.inner = post;
+            Some(TableWriter::PostInit(mut writer)) => {
+                writer.write(&chunk.batch, None)?;
+                self.inner = Some(TableWriter::PostInit(writer));
             }
-            None => unreachable!()
+            None => unreachable!(),
         }
         Ok(())
     }
