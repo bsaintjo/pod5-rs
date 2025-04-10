@@ -439,7 +439,12 @@ mod test {
 
         let mut signals = reader.signal_dfs().unwrap();
         let signal_df = signals.next().unwrap().unwrap();
-        writer.write_table(signal_df).unwrap();
+        // writer.write_table(signal_df).unwrap();
+        writer.write_tables_with(|guard| {
+            guard.write_table(signal_df.clone())?;
+            guard.write_table(signal_df)?;
+            Ok(())
+        }).unwrap();
 
         let mut run_info = reader.run_info_dfs().unwrap();
         let run_info_df = run_info.next().unwrap().unwrap();
