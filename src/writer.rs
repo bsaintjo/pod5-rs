@@ -255,6 +255,8 @@ impl<W: Write + Seek> Writer<W> {
     pub(crate) fn _finish(&mut self) -> Result<(), WriteError> {
         self.write_footer_magic()?;
         self.write_footer()?;
+        self.write_section_marker()?;
+        self.write_signature()?;
         Ok(())
     }
 
@@ -268,11 +270,12 @@ impl<W: Write + Seek> Writer<W> {
     fn write_footer(&mut self) -> Result<(), WriteError> {
         if !self.footer_written {
             let mut footer = build_footer2(&self.tables);
-            let padding_len = footer.len() % 8;
-            footer.extend_from_slice(&vec![0; padding_len]);
+            // let padding_len = footer.len() % 8;
+            // footer.extend_from_slice(&vec![0; padding_len]);
             self.writer
                 .write_all(&footer)
                 .map_err(WriteError::FailedToWriteFooter)?;
+            self.footer_written = true;
         } else {
             log::warn!("Footer was already written but attempted to write one anyways.")
         }
@@ -321,7 +324,7 @@ fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
         },
     );
 
-    builder.finish(fbtable, None);
+    builder.finish(fbtable, Some("test"));
     builder.finished_data().to_vec()
 }
 
@@ -421,15 +424,35 @@ where
 mod test {
     use std::{fs::File, io::Cursor};
 
+    use flatbuffers::root;
     use polars::{df, series::Series};
 
     use super::*;
     use crate::reader::Reader;
 
     #[test]
+    fn test_footer_roundtrip() {
+        let mut inner = Cursor::new(Vec::<u8>::new());
+        inner
+            .write_all(&FOOTER_MAGIC)
+            .map_err(WriteError::FailedToWriteFooterMagic)
+            .unwrap();
+        let buf = build_footer2(&[TableInfo {
+            offset: 100,
+            length: 123,
+            content_type: ContentType::SignalTable,
+        }]);
+        inner.write_all(&buf).unwrap();
+        inner.rewind().unwrap();
+        let footer = root::<Footer>(&buf).unwrap();
+        println!("{footer:?}");
+    }
+
+    #[test]
     fn test_writer_reader_roundtrip() {
         let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
         let mut reader = Reader::from_reader(file).unwrap();
+        println!("BEFORE: {:?}", reader.footer.footer());
         let buf = Cursor::new(Vec::new());
         let mut writer = Writer::from_writer(buf).unwrap();
 
@@ -440,17 +463,26 @@ mod test {
         let mut signals = reader.signal_dfs().unwrap();
         let signal_df = signals.next().unwrap().unwrap();
         // writer.write_table(signal_df).unwrap();
-        writer.write_tables_with(|guard| {
-            guard.write_table(signal_df.clone())?;
-            guard.write_table(signal_df)?;
-            Ok(())
-        }).unwrap();
+        writer
+            .write_tables_with(|guard| {
+                guard.write_table(signal_df.clone())?;
+                guard.write_table(signal_df)?;
+                Ok(())
+            })
+            .unwrap();
 
         let mut run_info = reader.run_info_dfs().unwrap();
         let run_info_df = run_info.next().unwrap().unwrap();
         writer.write_table(run_info_df).unwrap();
 
-        writer.finish().unwrap();
+        writer._finish().unwrap();
+        let mut inner = writer.into_inner();
+        inner.rewind().unwrap();
+        let mut reader = Reader::from_reader(inner).unwrap();
+        println!("AFTER: {:?}", reader.footer.footer());
+
+        // let mut reads = reader.read_dfs().unwrap();
+        // let read_df = reads.next().unwrap().unwrap();
     }
 
     #[test]
