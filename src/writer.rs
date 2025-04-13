@@ -428,23 +428,35 @@ mod test {
     use polars::{df, series::Series};
 
     use super::*;
-    use crate::reader::Reader;
+    use crate::{footer::ParsedFooter, reader::Reader};
 
     #[test]
     fn test_footer_roundtrip() {
-        let mut inner = Cursor::new(Vec::<u8>::new());
-        inner
-            .write_all(&FOOTER_MAGIC)
-            .map_err(WriteError::FailedToWriteFooterMagic)
-            .unwrap();
-        let buf = build_footer2(&[TableInfo {
-            offset: 100,
-            length: 123,
-            content_type: ContentType::SignalTable,
-        }]);
-        inner.write_all(&buf).unwrap();
-        inner.rewind().unwrap();
-        let footer = root::<Footer>(&buf).unwrap();
+        let inner = Cursor::new(Vec::<u8>::new());
+        let mut writer = Writer::new(inner);
+        // writer.write_footer_magic().unwrap();
+        // writer.write_footer().unwrap();
+        // writer.write_section_marker().unwrap();
+        // writer.write_signature().unwrap();
+
+        writer._finish().unwrap();
+        // inner
+        //     .write_all(&FOOTER_MAGIC)
+        //     .map_err(WriteError::FailedToWriteFooterMagic)
+        //     .unwrap();
+        // let buf = build_footer2(&[TableInfo {
+        //     offset: 100,
+        //     length: 123,
+        //     content_type: ContentType::SignalTable,
+        // }]);
+        // inner.write_all(&buf).unwrap();
+        let mut inner = writer.into_inner();
+        // inner.rewind().unwrap();
+        // inner.seek(std::io::SeekFrom::Start(1)).unwrap();
+        // let buf = inner.into_inner();
+        // let footer = root::<Footer>(&buf[8..]).unwrap();
+        let binding = ParsedFooter::read_footer(inner).unwrap();
+        let footer= binding.footer().unwrap();
         println!("{footer:?}");
     }
 
