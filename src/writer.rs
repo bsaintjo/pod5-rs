@@ -24,6 +24,10 @@ use crate::{
     FILE_SIGNATURE,
 };
 
+const SOFTWARE: &str = "pod5-rs";
+const POD5_VERSION: &str = "0.0.40";
+const FOOTER_MAGIC: [u8; 8] = [b'F', b'O', b'O', b'T', b'E', b'R', 0x000, 0x000];
+
 #[derive(Debug, thiserror::Error)]
 pub enum WriteError {
     #[error("Failed to write POD5 signature: {0}")]
@@ -49,6 +53,9 @@ pub enum WriteError {
 
     #[error("Writer: Failed to rewind underlying writer: {0}")]
     FailedToRewind(std::io::Error),
+
+    #[error("Writer: Failed to write footer length as bytes")]
+    FailedToWriteFooterLengthBytes,
 }
 
 pub struct TableBatch {
@@ -121,6 +128,7 @@ where
     position: u64,
     writer: W,
     section_marker: Uuid,
+    file_identifier: Uuid,
     tables: Vec<TableInfo>,
     contents_writtens: HashSet<ContentType>,
     footer_written: bool,
@@ -129,6 +137,7 @@ where
 impl<W: Write + Seek> Writer<W> {
     pub(crate) fn new(writer: W) -> Self {
         let section_marker = Uuid::new_v4();
+        let file_identifier = Uuid::new_v4();
         Self {
             position: 0,
             writer,
@@ -136,6 +145,7 @@ impl<W: Write + Seek> Writer<W> {
             tables: Vec::new(),
             contents_writtens: HashSet::new(),
             footer_written: false,
+            file_identifier,
         }
     }
 
@@ -230,11 +240,11 @@ impl<W: Write + Seek> Writer<W> {
     }
 
     fn end_table(&mut self, content_type: ContentType) -> Result<(), WriteError> {
-        self.write_section_marker().unwrap();
         let new_position = self
             .writer
             .stream_position()
             .map_err(WriteError::StreamPositionError)?;
+        self.write_section_marker().unwrap();
         let offset = self.position as i64;
         let length = new_position as i64 - self.position as i64;
         self.tables.push(TableInfo {
@@ -242,6 +252,7 @@ impl<W: Write + Seek> Writer<W> {
             length,
             content_type,
         });
+        self.position = new_position + self.section_marker.as_bytes().len() as u64;
         Ok(())
     }
 
@@ -267,19 +278,18 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
-    fn write_footer(&mut self) -> Result<(), WriteError> {
-        if !self.footer_written {
-            let mut footer = build_footer2(&self.tables);
-            // let padding_len = footer.len() % 8;
-            // footer.extend_from_slice(&vec![0; padding_len]);
-            self.writer
-                .write_all(&footer)
-                .map_err(WriteError::FailedToWriteFooter)?;
-            self.footer_written = true;
-        } else {
-            log::warn!("Footer was already written but attempted to write one anyways.")
-        }
-        Ok(())
+    fn write_footer(&mut self) -> Result<u64, WriteError> {
+        let footer = build_footer2(&self.tables);
+        // let padding_len = footer.len() % 8;
+        // footer.extend_from_slice(&vec![0; padding_len]);
+        self.writer
+            .write_all(&footer)
+            .map_err(WriteError::FailedToWriteFooter)?;
+        let footer_len_bytes = (footer.len() as i64).to_le_bytes();
+        self.writer
+            .write_all(&footer_len_bytes)
+            .map_err(|_| WriteError::FailedToWriteFooterLengthBytes)?;
+        Ok(footer.len() as u64)
     }
 }
 
@@ -292,8 +302,6 @@ impl<W: Write + Seek> Write for Writer<W> {
         self.writer.flush()
     }
 }
-
-const FOOTER_MAGIC: [u8; 8] = [b'F', b'O', b'O', b'T', b'E', b'R', 0x000, 0x000];
 
 fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
     let mut builder = flatbuffers::FlatBufferBuilder::new();
@@ -311,8 +319,8 @@ fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
     let contents = Some(builder.create_vector(&tables));
 
     let file_identifier = Some(builder.create_string("some file identifier"));
-    let software = Some(builder.create_string("some software"));
-    let pod5_version = Some(builder.create_string("0.3.0"));
+    let software = Some(builder.create_string(SOFTWARE));
+    let pod5_version = Some(builder.create_string(POD5_VERSION));
 
     let fbtable = Footer::create(
         &mut builder,
@@ -324,7 +332,7 @@ fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
         },
     );
 
-    builder.finish(fbtable, Some("test"));
+    builder.finish_minimal(fbtable);
     builder.finished_data().to_vec()
 }
 
@@ -374,9 +382,12 @@ where
 {
     fn new(inner: &'a mut Writer<W>) -> Self {
         let mut metadata = Metadata::new();
-        metadata.insert("MINKNOW:pod5_version".into(), "0.3.0".into());
-        metadata.insert("MINKNOW:software".into(), "pod5-rs 0.1.0".into());
-        metadata.insert("MINKNOW:file_identifier".into(), "unimplemented".into());
+        metadata.insert("MINKNOW:pod5_version".into(), POD5_VERSION.into());
+        metadata.insert("MINKNOW:software".into(), SOFTWARE.into());
+        metadata.insert(
+            "MINKNOW:file_identifier".into(),
+            inner.file_identifier.to_string().into(),
+        );
         Self {
             inner: Some(TableWriter::PreInit(inner)),
             table: PhantomData,
@@ -424,7 +435,6 @@ where
 mod test {
     use std::{fs::File, io::Cursor};
 
-    use flatbuffers::root;
     use polars::{df, series::Series};
 
     use super::*;
@@ -434,29 +444,10 @@ mod test {
     fn test_footer_roundtrip() {
         let inner = Cursor::new(Vec::<u8>::new());
         let mut writer = Writer::new(inner);
-        // writer.write_footer_magic().unwrap();
-        // writer.write_footer().unwrap();
-        // writer.write_section_marker().unwrap();
-        // writer.write_signature().unwrap();
-
         writer._finish().unwrap();
-        // inner
-        //     .write_all(&FOOTER_MAGIC)
-        //     .map_err(WriteError::FailedToWriteFooterMagic)
-        //     .unwrap();
-        // let buf = build_footer2(&[TableInfo {
-        //     offset: 100,
-        //     length: 123,
-        //     content_type: ContentType::SignalTable,
-        // }]);
-        // inner.write_all(&buf).unwrap();
-        let mut inner = writer.into_inner();
-        // inner.rewind().unwrap();
-        // inner.seek(std::io::SeekFrom::Start(1)).unwrap();
-        // let buf = inner.into_inner();
-        // let footer = root::<Footer>(&buf[8..]).unwrap();
+        let inner = writer.into_inner();
         let binding = ParsedFooter::read_footer(inner).unwrap();
-        let footer= binding.footer().unwrap();
+        let footer = binding.footer().unwrap();
         println!("{footer:?}");
     }
 
@@ -474,27 +465,35 @@ mod test {
 
         let mut signals = reader.signal_dfs().unwrap();
         let signal_df = signals.next().unwrap().unwrap();
-        // writer.write_table(signal_df).unwrap();
         writer
             .write_tables_with(|guard| {
+                // guard.write_table(signal_df.clone())?;
                 guard.write_table(signal_df.clone())?;
-                guard.write_table(signal_df)?;
                 Ok(())
             })
             .unwrap();
 
         let mut run_info = reader.run_info_dfs().unwrap();
         let run_info_df = run_info.next().unwrap().unwrap();
-        writer.write_table(run_info_df).unwrap();
+        writer.write_table(run_info_df.clone()).unwrap();
 
         writer._finish().unwrap();
         let mut inner = writer.into_inner();
         inner.rewind().unwrap();
+
         let mut reader = Reader::from_reader(inner).unwrap();
         println!("AFTER: {:?}", reader.footer.footer());
 
-        // let mut reads = reader.read_dfs().unwrap();
-        // let read_df = reads.next().unwrap().unwrap();
+        let mut signals_rt = reader.signal_dfs().unwrap();
+        let signal_df_rt = signals_rt.next().unwrap().unwrap();
+        assert_eq!(signal_df, signal_df_rt);
+
+        let mut run_info_rt = reader.run_info_dfs().unwrap();
+        let run_info_df_rt= run_info_rt.next().unwrap().unwrap();
+        assert_eq!(run_info_df, run_info_df_rt);
+
+        // let mut reads_rt = reader.read_dfs().unwrap();
+        // let read_df_rt = reads_rt.next().unwrap().unwrap();
     }
 
     #[test]
