@@ -303,7 +303,9 @@ pub(crate) fn get_next_df(
     fields: &[Field],
     table_reader: &mut FileReader<Cursor<Vec<u8>>>,
 ) -> Option<Result<DataFrame, Pod5Error>> {
-    if let Ok(chunk) = table_reader.next()? {
+    // TODO: Remove unwrap and avoid Option since it
+    // can hide conversion problems
+    if let Some(chunk) = Some(table_reader.next()?.unwrap()) {
         let mut acc = Vec::with_capacity(fields.len());
         for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
             // let arr = convert_array2(arr);

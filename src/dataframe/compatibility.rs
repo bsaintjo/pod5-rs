@@ -99,8 +99,8 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
 
 #[derive(Debug)]
 pub(crate) struct FieldArray {
-    field: pl::ArrowField,
-    arr: Box<dyn Array>,
+    pub(crate) field: pl::ArrowField,
+    pub(crate) arr: Box<dyn Array>,
 }
 
 impl FieldArray {

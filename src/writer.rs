@@ -279,7 +279,7 @@ impl<W: Write + Seek> Writer<W> {
     }
 
     fn write_footer(&mut self) -> Result<u64, WriteError> {
-        let footer = build_footer2(&self.tables);
+        let footer = build_footer2(&self.file_identifier, &self.tables);
         // let padding_len = footer.len() % 8;
         // footer.extend_from_slice(&vec![0; padding_len]);
         self.writer
@@ -303,7 +303,7 @@ impl<W: Write + Seek> Write for Writer<W> {
     }
 }
 
-fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
+fn build_footer2(file_identifier: &Uuid, table_infos: &[TableInfo]) -> Vec<u8> {
     let mut builder = flatbuffers::FlatBufferBuilder::new();
     let mut tables = Vec::with_capacity(table_infos.len());
     for table in table_infos {
@@ -318,7 +318,7 @@ fn build_footer2(table_infos: &[TableInfo]) -> Vec<u8> {
     }
     let contents = Some(builder.create_vector(&tables));
 
-    let file_identifier = Some(builder.create_string("some file identifier"));
+    let file_identifier = Some(builder.create_string(&file_identifier.to_string()));
     let software = Some(builder.create_string(SOFTWARE));
     let pod5_version = Some(builder.create_string(POD5_VERSION));
 
@@ -435,10 +435,119 @@ where
 mod test {
     use std::{fs::File, io::Cursor};
 
-    use polars::{df, series::Series};
+    use polars::{
+        df, enable_string_cache, frame::DataFrame, prelude::{CategoricalChunkedBuilder, CategoricalOrdering, CompatLevel, IntoColumn, PlSmallStr}, series::{IntoSeries, Series}
+    };
+    use polars_arrow::{
+        array::{DictionaryArray, PrimitiveArray, Utf8Array},
+        io::ipc::read::{read_file_metadata, FileReader},
+    };
 
     use super::*;
     use crate::{footer::ParsedFooter, reader::Reader};
+
+    #[test]
+    fn test_dictionary_df_roundtrip2() {
+        let mut dict_column =
+            CategoricalChunkedBuilder::new("test".into(), 1, CategoricalOrdering::Physical);
+        dict_column.append_value("alpha");
+        // dict_column.append_value("beta");
+        // dict_column.append_null();
+        // dict_column.register_value("gamma");
+        let dict_column = dict_column.finish();
+        let dict_column = dict_column.into_column();
+        let dict_column = DataFrame::new(vec![dict_column]).unwrap();
+        let buf = Cursor::new(Vec::new());
+        let chunk = _into_record_batch(&dict_column).unwrap();
+        let mut writer =
+            FileWriter::try_new(buf, chunk.schema.clone(), None, Default::default()).unwrap();
+        writer.write(&chunk.batch, None).unwrap();
+        writer.finish().unwrap();
+
+        let mut buf = writer.into_inner();
+        buf.rewind().unwrap();
+        let metadata = read_file_metadata(&mut buf).unwrap();
+
+        let mut reader = FileReader::new(buf, metadata, None, None);
+        let _ = reader.next().unwrap().unwrap();
+    }
+
+    #[test]
+    fn test_dictionary_df_roundtrip() {
+        let mut dict_column =
+            CategoricalChunkedBuilder::new("test".into(), 10, CategoricalOrdering::Physical);
+        dict_column.append_value("alpha");
+        dict_column.append_value("beta");
+        dict_column.append_null();
+        dict_column.register_value("gamma");
+        let dict_column = dict_column.finish().into_series().into_frame();
+        let buf = Cursor::new(Vec::new());
+        let chunk = _into_record_batch(&dict_column).unwrap();
+        let mut writer =
+            FileWriter::try_new(buf, chunk.schema.clone(), None, Default::default()).unwrap();
+        writer.write(&chunk.batch, None).unwrap();
+        writer.finish().unwrap();
+
+        let mut buf = writer.into_inner();
+        buf.rewind().unwrap();
+        let metadata = read_file_metadata(&mut buf).unwrap();
+
+        let mut reader = FileReader::new(buf, metadata, None, None);
+        let _ = reader.next().unwrap().unwrap();
+    }
+
+    #[test]
+    fn test_dictionary_roundtrip() {
+        let keys = PrimitiveArray::from_iter([0, 1, 2].into_iter().map(Some));
+        let values = Utf8Array::<i32>::from([Some("hello"), Some("world"), Some("thanks")]).boxed();
+        let dict = DictionaryArray::try_from_keys(keys, values).unwrap();
+
+        let name: PlSmallStr = "test".into();
+        let field = ArrowField::new(name.clone(), dict.dtype().clone(), true);
+        let mut schema: Schema<_> = Default::default();
+        schema.insert(name, field);
+        let schema = Arc::new(schema);
+
+        let buf = Cursor::new(Vec::new());
+        let mut writer =
+            FileWriter::try_new(buf, schema.clone(), None, Default::default()).unwrap();
+        let chunk = RecordBatch::new(3, schema.clone(), vec![dict.boxed()]);
+        writer.write(&chunk, None).unwrap();
+        writer.finish().unwrap();
+
+        let mut buf = writer.into_inner();
+        buf.rewind().unwrap();
+
+        let metadata = read_file_metadata(&mut buf).unwrap();
+        let mut reader = FileReader::new(buf, metadata, None, None);
+        let _ = reader.next().unwrap().unwrap();
+    }
+
+    #[test]
+    fn test_read_table_roundtrip() {
+        let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
+        let mut reader = Reader::from_reader(file).unwrap();
+        let buf = Cursor::new(Vec::new());
+        let mut reads = reader.read_dfs().unwrap();
+        let read_df = reads.next().unwrap().unwrap();
+        let chunk = read_df.into_record_batch().unwrap();
+
+        let mut writer =
+            FileWriter::try_new(buf, chunk.schema.clone(), None, Default::default()).unwrap();
+        writer.write(&chunk.batch, None).unwrap();
+        writer.finish().unwrap();
+
+        let mut buf = writer.into_inner();
+        buf.rewind().unwrap();
+        let metadata = read_file_metadata(&mut buf).unwrap();
+        assert_eq!(
+            metadata.ipc_schema,
+            reads.table_reader.metadata().ipc_schema
+        );
+
+        let mut reader = FileReader::new(buf, metadata, None, None);
+        let _ = reader.next().unwrap().unwrap();
+    }
 
     #[test]
     fn test_footer_roundtrip() {
@@ -489,11 +598,11 @@ mod test {
         assert_eq!(signal_df, signal_df_rt);
 
         let mut run_info_rt = reader.run_info_dfs().unwrap();
-        let run_info_df_rt= run_info_rt.next().unwrap().unwrap();
+        let run_info_df_rt = run_info_rt.next().unwrap().unwrap();
         assert_eq!(run_info_df, run_info_df_rt);
 
-        // let mut reads_rt = reader.read_dfs().unwrap();
-        // let read_df_rt = reads_rt.next().unwrap().unwrap();
+        let mut reads_rt = reader.read_dfs().unwrap();
+        let read_df_rt = reads_rt.next().unwrap().unwrap();
     }
 
     #[test]
