@@ -166,17 +166,10 @@ impl SignalDataFrameIter {
         length: u64,
         file: &mut R,
     ) -> Result<Self, Pod5Error> {
-        let mut buf = vec![0u8; length as usize];
-        file.seek(SeekFrom::Start(offset))?;
-        file.read_exact(&mut buf)?;
-        let mut run_info_buf = Cursor::new(buf);
-        let metadata =
-            read_file_metadata(&mut run_info_buf).map_err(|_| Pod5Error::SignalTableMissing)?;
-        let fields = metadata.schema.clone();
-
-        let table_reader = FileReader::new(run_info_buf, metadata, None, None);
+        let (fields, table_reader) =
+            read_to_dataframe(offset, length, Pod5Error::SignalTableMissing, file)?;
         Ok(Self {
-            fields: fields.iter().map(|f| f.1).cloned().collect(),
+            fields,
             table_reader,
         })
     }
@@ -305,24 +298,27 @@ pub(crate) fn get_next_df(
 ) -> Option<Result<DataFrame, Pod5Error>> {
     // TODO: Remove unwrap and avoid Option since it
     // can hide conversion problems
-    if let Some(chunk) = Some(table_reader.next()?.unwrap()) {
-        let mut acc = Vec::with_capacity(fields.len());
-        for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
-            // let arr = convert_array2(arr);
-            // if let Some(s) = compatibility::array_to_series(f, arr) {
-            //     acc.push(s);
-            // }
-            let s = compatibility::array_to_series(f, arr);
-            acc.push(s);
-            // let s = polars::prelude::Series::try_from((f, arr));
-            // acc.push(s.unwrap());
-        }
+    table_reader.next().map(|chunk| chunk.map(|batch| {
+            let mut acc = Vec::with_capacity(fields.len());
+            for (arr, f) in batch.into_arrays().into_iter().zip(fields.iter()) {
+                let s = compatibility::array_to_series(f, arr);
+                acc.push(s);
+            }
 
-        let df = polars::prelude::DataFrame::from_iter(acc);
-        Some(Ok(df))
-    } else {
-        None
-    }
+            polars::prelude::DataFrame::from_iter(acc)
+        }).map_err(Pod5Error::PolarsError))
+    // if let Some(chunk) = Some(table_reader.next()?.unwrap()) {
+    //     let mut acc = Vec::with_capacity(fields.len());
+    //     for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
+    //         let s = compatibility::array_to_series(f, arr);
+    //         acc.push(s);
+    //     }
+
+    //     let df = polars::prelude::DataFrame::from_iter(acc);
+    //     Some(Ok(df))
+    // } else {
+    //     None
+    // }
 }
 
 pub(crate) type TableReader = (Vec<Field>, FileReader<Cursor<Vec<u8>>>);
@@ -337,7 +333,7 @@ pub(crate) fn read_to_dataframe<R: Read + Seek>(
     file.seek(SeekFrom::Start(offset))?;
     file.read_exact(&mut run_info_buf)?;
     let mut run_info_buf = Cursor::new(run_info_buf);
-    let metadata = read_file_metadata(&mut run_info_buf).map_err(|_| err)?;
+    let metadata = read_file_metadata(&mut run_info_buf).map_err(Pod5Error::ReadMetadataError)?;
     let fields = metadata.schema.iter().map(|f| f.1).cloned().collect();
 
     let signal_table = FileReader::new(run_info_buf, metadata, None, None);

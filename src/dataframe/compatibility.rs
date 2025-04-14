@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use polars::{
     datatypes::ArrowDataType,
-    prelude as pl,
-    prelude::{ArrowField, CompatLevel, LargeBinaryArray, PlSmallStr},
+    error::PolarsError,
+    prelude::{self as pl, ArrowField, CompatLevel, LargeBinaryArray, PlSmallStr},
     series::Series,
 };
 use polars_arrow::{
@@ -299,6 +301,42 @@ pub(crate) fn series_to_array(series: Series) -> FieldArray {
             farr
         }
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CompatError {
+    #[error("Error handing minknow.uuid column: {0}")]
+    MinknowUuidError(PolarsError),
+
+    #[error("Error handing minknow.vbz column: {0}")]
+    MinknowVbzError(PolarsError),
+}
+
+pub(crate) fn record_batch_to_compat(
+    batch: RecordBatchT<Box<dyn Array>>,
+) -> Result<RecordBatchT<Box<dyn Array>>, CompatError> {
+    let height = batch.height();
+    let mut new_schema = Schema::with_capacity(batch.schema().len());
+    let mut new_chunks = Vec::with_capacity(batch.arrays().len());
+
+    let (schema, chunks) = batch.into_schema_and_arrays();
+
+    for ((name, field), array) in schema.iter().zip(chunks.into_iter()) {
+        let farr = match (name.as_str(), &field.dtype) {
+            ("minknow.vbz", _) => minknow_vbz_to_large_binary(field, vec![array])
+                .map_err(CompatError::MinknowVbzError)?,
+            ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
+                .map_err(CompatError::MinknowUuidError)?,
+            _ => {
+                let farr = FieldArray::new(field.clone(), array);
+                log::debug!("series_to_array: {farr:?}");
+                farr
+            }
+        };
+        new_schema.insert(name.clone(), farr.field);
+        new_chunks.push(farr.arr);
+    }
+    Ok(RecordBatchT::new(height, Arc::new(new_schema), new_chunks))
 }
 
 #[cfg(test)]

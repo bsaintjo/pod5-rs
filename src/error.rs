@@ -2,6 +2,7 @@
 use std::io;
 
 use flatbuffers::InvalidFlatbuffer;
+use polars::error::PolarsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Pod5Error {
@@ -29,6 +30,10 @@ pub enum Pod5Error {
 
     #[error("Missing Run Info table from POD5")]
     RunInfoTableMissing,
+
+    #[error("Problem with reading metadata: {0}")]
+    ReadMetadataError(PolarsError),
+
 
     /// Error occured in the DataFrame API from polars
     #[error("{0}")]
