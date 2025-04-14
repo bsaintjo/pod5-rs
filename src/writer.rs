@@ -455,13 +455,13 @@ mod test {
         // dict_column.append_null();
         // dict_column.register_value("gamma");
         let dict_column = dict_column.finish();
-        let dict_column = dict_column.into_column();
-        let dict_column = DataFrame::new(vec![dict_column]).unwrap();
+        let dict_column = dict_column.into_series().into_frame().iter_chunks(CompatLevel::newest(), false).next().unwrap();
         let buf = Cursor::new(Vec::new());
-        let chunk = _into_record_batch(&dict_column).unwrap();
+        // let chunk = _into_record_batch(&dict_column).unwrap();
+        let schema = Arc::new(dict_column.schema().clone());
         let mut writer =
-            FileWriter::try_new(buf, chunk.schema.clone(), None, Default::default()).unwrap();
-        writer.write(&chunk.batch, None).unwrap();
+            FileWriter::try_new(buf, schema.clone(), None, Default::default()).unwrap();
+        writer.write(&dict_column, None).unwrap();
         writer.finish().unwrap();
 
         let mut buf = writer.into_inner();
