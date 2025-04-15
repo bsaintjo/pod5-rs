@@ -1,10 +1,7 @@
 use std::{fs::File, path::PathBuf};
 
 use pod5::{
-    polars::df,
-    reader::Reader,
-    svb16::{decode, encode},
-    writer::Writer,
+    dataframe::SignalDataFrame, polars::df, reader::Reader, svb16::{decode, encode}, writer::Writer
 };
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
@@ -112,9 +109,11 @@ impl FrameWriter {
     fn write_signal_tables(&mut self, tables: &mut SignalIter) -> PyResult<()> {
         let inner = self.writer.as_mut().unwrap();
         let tables = &mut tables.0;
-        inner
-            .write_table_iter(tables.map(|sdf| sdf.unwrap()))
-            .map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
+        let mut guard = inner.guard::<SignalDataFrame>();
+        for table in tables {
+            let table = table.map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
+            guard.write_table2(&table).map_err(|_| PyException::new_err("Failed to write table"))?;
+        }
         Ok(())
     }
 

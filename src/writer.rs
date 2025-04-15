@@ -376,21 +376,13 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
-    fn write_and_guard<D: IntoTable>(
-        &mut self,
-        df: &D,
-    ) -> Result<TableWriteGuard<'_, W, D>, WriteError> {
-        let batch = df
-            .as_dataframe()
-            .iter_chunks(CompatLevel::newest(), false)
-            .next()
-            .unwrap();
-        let batch = record_batch_to_compat(batch).unwrap();
-        let schema = Arc::new(batch.schema().clone());
-
-        let mut writer = FileWriter::try_new(self, schema, None, Default::default()).unwrap();
-        writer.write(&batch, None).unwrap();
-        Ok(TableWriteGuard::from_file_writer(writer))
+    pub fn guard<T: IntoTable>(&mut self) -> TableWriteGuard<'_, W, T> {
+        let metadata = self.metadata.clone();
+        TableWriteGuard {
+            inner: Some(TableWriter::PreInit(self)),
+            metadata,
+            table: PhantomData,
+        }
     }
 }
 
@@ -496,18 +488,6 @@ where
         }
     }
 
-    fn from_file_writer(writer: FileWriter<&mut Writer<W>>) -> TableWriteGuard<'_, W, T> {
-        let mut metadata = Metadata::new();
-        metadata.insert("MINKNOW:pod5_version".into(), POD5_VERSION.into());
-        metadata.insert("MINKNOW:software".into(), SOFTWARE.into());
-        metadata.insert("MINKNOW:file_identifier".into(), "test".into());
-        TableWriteGuard {
-            inner: Some(TableWriter::PostInit(writer)),
-            metadata: Arc::new(metadata),
-            table: PhantomData,
-        }
-    }
-
     // pub fn init_take<F>(&mut self, f: F) -> Result<(), WriteError> where F:
     // Fn(&mut Writer<W>) {     let mut w = match self.inner.take() {
     //         Some(TableWriter::PreInit(writer)) => {
@@ -545,6 +525,33 @@ where
             let chunk = record_batch_to_compat(chunk).unwrap();
             w.write(&chunk, None)?;
         }
+        self.inner = Some(TableWriter::PostInit(w));
+        Ok(())
+    }
+
+    pub fn write_table2<D: IntoTable>(&mut self, df: &D) -> Result<(), WriteError> {
+        let batch = df
+            .as_dataframe()
+            .iter_chunks(CompatLevel::newest(), false)
+            .next()
+            .unwrap();
+        let batch = record_batch_to_compat(batch).unwrap();
+        let schema = Arc::new(batch.schema().clone());
+
+        let mut w = match self.inner.take() {
+            Some(TableWriter::PreInit(writer)) => {
+                let mut writer = FileWriter::new(writer, schema, None, Default::default());
+                writer.set_custom_schema_metadata(self.metadata.clone());
+                writer.start()?;
+                writer
+            }
+            Some(TableWriter::PostInit(writer)) => writer,
+            None => {
+                panic!("Writer missing; should not be possible")
+            }
+        };
+
+        w.write(&batch, None).unwrap();
         self.inner = Some(TableWriter::PostInit(w));
         Ok(())
     }
@@ -874,7 +881,10 @@ mod test {
         let read_df = reads.next().unwrap().unwrap();
         // writer.write_table(&read_df).unwrap();
         // writer.write_tables_with(|guard| guard.write_table(&read_df)).unwrap();
-        let guard = writer.write_and_guard(&read_df).unwrap();
+        // let guard = writer.write_and_guard(&read_df).unwrap();
+        // guard.finish2().unwrap();
+        let mut guard = writer.guard::<ReadDataFrame>();
+        guard.write_table2(&read_df).unwrap();
         guard.finish2().unwrap();
         // writer.write_dataframe(&read_df).unwrap();
 
