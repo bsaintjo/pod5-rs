@@ -78,7 +78,7 @@ pub trait IntoTable {
     }
 }
 
-impl<'a, T> IntoTable for &'a T
+impl<T> IntoTable for &T
 where
     T: IntoTable,
 {

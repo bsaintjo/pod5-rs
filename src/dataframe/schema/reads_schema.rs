@@ -46,8 +46,8 @@ impl ReadsSchema {
         Self { inner }
     }
 
-    pub fn inner(&self) -> &ArrowSchemaRef {
-        &self.inner
+    pub fn into_inner(self) -> ArrowSchemaRef {
+        self.inner
     }
 }
 
@@ -67,7 +67,7 @@ mod test_super {
         let mut reader = Reader::from_reader(&mut file).unwrap();
         let signal_df_iter = reader.read_dfs().unwrap();
         pretty_assertions::assert_eq!(
-            **ReadsSchema::new().inner(),
+            *ReadsSchema::new().into_inner(),
             signal_df_iter.table_reader.schema().clone()
         );
     }
