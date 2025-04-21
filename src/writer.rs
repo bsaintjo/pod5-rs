@@ -347,7 +347,7 @@ impl<W: Write + Seek> Writer<W> {
     }
 
     fn write_footer(&mut self) -> Result<u64, WriteError> {
-        let footer = build_footer2(&self.file_identifier, &self.tables);
+        let footer = self.build_footer();
         self.writer
             .write_all(&footer)
             .map_err(WriteError::FailedToWriteFooter)?;
@@ -404,6 +404,39 @@ impl<W: Write + Seek> Writer<W> {
         guard.finish2()?;
         Ok(())
     }
+
+    fn build_footer(&self) -> Vec<u8> {
+        let mut builder = flatbuffers::FlatBufferBuilder::new();
+        let mut tables = Vec::with_capacity(self.tables.len());
+        for table in &self.tables {
+            let efile_args = EmbeddedFileArgs {
+                offset: table.offset,
+                length: table.length,
+                content_type: table.content_type,
+                ..Default::default()
+            };
+            let efile = EmbeddedFile::create(&mut builder, &efile_args);
+            tables.push(efile);
+        }
+        let contents = Some(builder.create_vector(&tables));
+
+        let file_identifier = Some(builder.create_string(&self.file_identifier.to_string()));
+        let software = Some(builder.create_string(SOFTWARE));
+        let pod5_version = Some(builder.create_string(POD5_VERSION));
+
+        let fbtable = Footer::create(
+            &mut builder,
+            &FooterArgs {
+                file_identifier,
+                software,
+                pod5_version,
+                contents,
+            },
+        );
+
+        builder.finish_minimal(fbtable);
+        builder.finished_data().to_vec()
+    }
 }
 
 impl<W: Write + Seek> Write for Writer<W> {
@@ -414,39 +447,6 @@ impl<W: Write + Seek> Write for Writer<W> {
     fn flush(&mut self) -> std::io::Result<()> {
         self.writer.flush()
     }
-}
-
-fn build_footer2(file_identifier: &Uuid, table_infos: &[TableInfo]) -> Vec<u8> {
-    let mut builder = flatbuffers::FlatBufferBuilder::new();
-    let mut tables = Vec::with_capacity(table_infos.len());
-    for table in table_infos {
-        let efile_args = EmbeddedFileArgs {
-            offset: table.offset,
-            length: table.length,
-            content_type: table.content_type,
-            ..Default::default()
-        };
-        let efile = EmbeddedFile::create(&mut builder, &efile_args);
-        tables.push(efile);
-    }
-    let contents = Some(builder.create_vector(&tables));
-
-    let file_identifier = Some(builder.create_string(&file_identifier.to_string()));
-    let software = Some(builder.create_string(SOFTWARE));
-    let pod5_version = Some(builder.create_string(POD5_VERSION));
-
-    let fbtable = Footer::create(
-        &mut builder,
-        &FooterArgs {
-            file_identifier,
-            software,
-            pod5_version,
-            contents,
-        },
-    );
-
-    builder.finish_minimal(fbtable);
-    builder.finished_data().to_vec()
 }
 
 /// When starting to write an Arrow IPC file, there are a few things that need
