@@ -65,17 +65,34 @@ pub enum WriteError {
     FailedToWriteFooterLengthBytes,
 }
 
+#[derive(Debug, Clone)]
+pub enum TableContent {
+    Signal,
+    Read,
+    RunInfo,
+    Other,
+}
+
+impl TableContent {
+    fn into_content_type(self) -> ContentType {
+        match self {
+            TableContent::Signal => ContentType::SignalTable,
+            TableContent::Read => ContentType::ReadsTable,
+            TableContent::RunInfo => ContentType::RunInfoTable,
+            TableContent::Other => ContentType::OtherIndex,
+        }
+    }
+}
+
 pub struct TableBatch {
     batch: RecordBatch,
     schema: Arc<Schema<ArrowField>>,
 }
 
 pub trait IntoTable {
-    fn into_record_batch(self) -> Result<TableBatch, PolarsError>;
+    fn into_record_batch(self) -> TableBatch;
     fn as_dataframe(&self) -> &DataFrame;
-    fn content_type() -> ContentType {
-        ContentType::OtherIndex
-    }
+    fn content_type() -> TableContent;
 }
 
 // impl<T> IntoTable for &T
@@ -96,12 +113,12 @@ impl IntoTable for SignalDataFrame {
         &self.0
     }
 
-    fn into_record_batch(self) -> Result<TableBatch, PolarsError> {
+    fn into_record_batch(self) -> TableBatch{
         _into_record_batch(&self.0)
     }
 
-    fn content_type() -> ContentType {
-        ContentType::SignalTable
+    fn content_type() -> TableContent {
+        TableContent::Signal
     }
 }
 
@@ -110,12 +127,12 @@ impl IntoTable for ReadDataFrame {
         &self.0
     }
 
-    fn into_record_batch(self) -> Result<TableBatch, PolarsError> {
+    fn into_record_batch(self) -> TableBatch {
         _into_record_batch(&self.0)
     }
 
-    fn content_type() -> ContentType {
-        ContentType::ReadsTable
+    fn content_type() -> TableContent {
+        TableContent::Read
     }
 }
 impl IntoTable for RunInfoDataFrame {
@@ -123,26 +140,26 @@ impl IntoTable for RunInfoDataFrame {
         &self.0
     }
 
-    fn into_record_batch(self) -> Result<TableBatch, PolarsError> {
+    fn into_record_batch(self) -> TableBatch {
         _into_record_batch(&self.0)
     }
 
-    fn content_type() -> ContentType {
-        ContentType::RunInfoTable
+    fn content_type() -> TableContent {
+        TableContent::RunInfo
     }
 }
 
-fn _into_record_batch(df: &polars::prelude::DataFrame) -> Result<TableBatch, PolarsError> {
+fn _into_record_batch(df: &polars::prelude::DataFrame) -> TableBatch {
     let field_arrays = df
         .iter()
         .map(|s| series_to_array(s.clone()))
         .collect::<Vec<_>>();
     let schema = Arc::new(field_arrs_to_schema(&field_arrays));
     let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
-    Ok(TableBatch {
+    TableBatch {
         batch: chunk,
         schema,
-    })
+    }
 }
 struct TableInfo {
     offset: i64,
@@ -229,16 +246,6 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
-    /// Write a table to the POD5 file using a write guard. At the end of the
-    /// closure, the section marker is written to the file, and the Writer
-    /// is updated with the written content type.
-    ///
-    /// This is primarily useful for writing multiple tables correctly. If you
-    /// only need to write a single table, use the `write_table` method.
-    ///
-    /// This method will return an error if the content type is not `OtherIndex`
-    /// and the content type has already been written. This is to prevent
-    /// writing multiple tables of the same type to the file.
     // pub fn write_tables_with<F, T>(&mut self, inserter: F) -> Result<(),
     // WriteError> where
     //     F: FnMut(&mut TableWriteGuard<W, T>) -> Result<(), WriteError>,
@@ -378,7 +385,7 @@ impl<W: Write + Seek> Writer<W> {
             FileWriter::try_new(&mut self.writer, schema, None, Default::default()).unwrap();
         writer.write(&batch, None).unwrap();
         writer.finish().unwrap();
-        self.end_table(D::content_type())?;
+        self.end_table(D::content_type().into_content_type())?;
         Ok(())
     }
 
@@ -391,15 +398,41 @@ impl<W: Write + Seek> Writer<W> {
         }
     }
 
+    /// Write a table to the POD5 file using a write guard. At the end of the
+    /// closure, the section marker is written to the file, and the Writer
+    /// is updated with the written content type.
+    ///
+    /// This is primarily useful for writing multiple tables correctly. If you
+    /// only need to write a single table, use the `write_table` method.
+    ///
+    /// This method will return an error if the content type is not `OtherIndex`
+    /// and the content type has already been written. This is to prevent
+    /// writing multiple tables of the same type to the file.
+    ///
+    /// This method will fail if a table of the same type has already been
+    /// written ```
+    /// # fn main() -> Result<(), WriteError>{
+    /// # let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
+    /// # let mut reader = Reader::from_reader(file).unwrap();
+    /// # let buf = Cursor::new(Vec::new());
+    /// # let mut writer = Writer::from_writer(buf).unwrap();
+    /// # let mut run_info = reader.run_info_dfs().unwrap();
+    /// # let run_info_df = run_info.next().unwrap().unwrap();
+    /// writer.with_guard::<RunInfoDataFrame, _>(|g| g.write_batch(&run_info_df))?;
+    /// 
+    /// /// Subsequent attempts to write run info tables will fail
+    /// assert!(writer.with_guard::<RunInfoDataFrame, _>(|g| g.write_batch(&run_info_df)).is_err());
+    /// #}
+    /// ```
     pub fn with_guard<T, F>(&mut self, mut closure: F) -> Result<(), WriteError>
     where
         T: IntoTable,
         F: FnMut(&mut TableWriteGuard<W, T>) -> Result<(), WriteError>,
     {
-        if T::content_type() != ContentType::OtherIndex
-            && self.contents_writtens.contains(&T::content_type())
+        if T::content_type().into_content_type() != ContentType::OtherIndex
+            && self.contents_writtens.contains(&T::content_type().into_content_type())
         {
-            return Err(WriteError::ContentTypeAlreadyWritten(T::content_type()));
+            return Err(WriteError::ContentTypeAlreadyWritten(T::content_type().into_content_type()));
         }
         let mut guard = self.guard::<T>();
         closure(&mut guard)?;
@@ -490,25 +523,25 @@ where
     table: PhantomData<T>,
 }
 
-impl<'a, W, T> TableWriteGuard<'a, W, T>
+impl<W, T> TableWriteGuard<'_, W, T>
 where
     W: Write + Seek,
     T: IntoTable,
 {
-    fn new(inner: &'a mut Writer<W>) -> Self {
-        let mut metadata = Metadata::new();
-        metadata.insert("MINKNOW:pod5_version".into(), POD5_VERSION.into());
-        metadata.insert("MINKNOW:software".into(), SOFTWARE.into());
-        metadata.insert(
-            "MINKNOW:file_identifier".into(),
-            inner.file_identifier.to_string().into(),
-        );
-        Self {
-            inner: Some(TableWriter::PreInit(inner)),
-            table: PhantomData,
-            metadata: Arc::new(metadata),
-        }
-    }
+    // fn new(inner: &'a mut Writer<W>) -> Self {
+    //     let mut metadata = Metadata::new();
+    //     metadata.insert("MINKNOW:pod5_version".into(), POD5_VERSION.into());
+    //     metadata.insert("MINKNOW:software".into(), SOFTWARE.into());
+    //     metadata.insert(
+    //         "MINKNOW:file_identifier".into(),
+    //         inner.file_identifier.to_string().into(),
+    //     );
+    //     Self {
+    //         inner: Some(TableWriter::PreInit(inner)),
+    //         table: PhantomData,
+    //         metadata: Arc::new(metadata),
+    //     }
+    // }
 
     // pub fn init_take<F>(&mut self, f: F) -> Result<(), WriteError> where F:
     // Fn(&mut Writer<W>) {     let mut w = match self.inner.take() {
@@ -588,7 +621,7 @@ where
         if let Some(TableWriter::PostInit(mut x)) = self.inner.take() {
             x.finish()?;
             let inner = x.into_inner();
-            inner.end_table(T::content_type())?;
+            inner.end_table(T::content_type().into_content_type())?;
         }
         Ok(())
     }
@@ -716,7 +749,7 @@ mod test {
         dict_column.register_value("gamma");
         let dict_column = dict_column.finish().into_series().into_frame();
         let buf = Cursor::new(Vec::new());
-        let chunk = _into_record_batch(&dict_column).unwrap();
+        let chunk = _into_record_batch(&dict_column);
         let mut writer =
             FileWriter::try_new(buf, chunk.schema.clone(), None, Default::default()).unwrap();
         writer.write(&chunk.batch, None).unwrap();
