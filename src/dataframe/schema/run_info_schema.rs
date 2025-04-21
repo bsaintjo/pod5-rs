@@ -50,9 +50,8 @@ impl RunInfoSchema {
 mod test_super {
     use std::fs::File;
 
-    use crate::reader::Reader;
-
     use super::*;
+    use crate::reader::Reader;
 
     #[test]
     fn test_run_info_schema() {
@@ -65,5 +64,4 @@ mod test_super {
             signal_df_iter.table_reader.schema().clone()
         );
     }
-
 }

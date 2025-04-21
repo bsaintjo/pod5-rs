@@ -10,19 +10,19 @@ pub struct ReadsSchema {
     pub(crate) inner: ArrowSchemaRef,
 }
 
-
 impl ReadsSchema {
     pub fn new() -> Self {
         let inner = Arc::new(ArrowSchema::from_iter([
             read_id(),
-            name_field("signal", ArrowDataType::List(
-                Box::new(ArrowField {
+            name_field(
+                "signal",
+                ArrowDataType::List(Box::new(ArrowField {
                     name: "item".into(),
                     dtype: ArrowDataType::UInt64,
                     is_nullable: true,
                     metadata: None,
-                }),
-            )),
+                })),
+            ),
             name_field("read_number", ArrowDataType::UInt32),
             name_field("start", ArrowDataType::UInt64),
             name_field("median_before", ArrowDataType::Float32),
@@ -51,14 +51,12 @@ impl ReadsSchema {
     }
 }
 
-
 #[cfg(test)]
 mod test_super {
     use std::fs::File;
 
-    use crate::reader::Reader;
-
     use super::*;
+    use crate::reader::Reader;
 
     #[test]
     fn test_run_info_schema() {
@@ -71,5 +69,4 @@ mod test_super {
             signal_df_iter.table_reader.schema().clone()
         );
     }
-
 }

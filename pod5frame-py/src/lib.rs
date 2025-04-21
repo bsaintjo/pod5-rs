@@ -1,11 +1,16 @@
 use std::{fs::File, path::PathBuf};
 
 use pod5::{
-    dataframe::SignalDataFrame, polars::df, reader::Reader, svb16::{decode, encode}, writer::Writer
+    dataframe::SignalDataFrame,
+    polars::df,
+    reader::Reader,
+    svb16::{decode, encode},
+    writer::Writer,
 };
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
-    prelude::*, py_run,
+    prelude::*,
+    py_run,
 };
 use pyo3_polars::PyDataFrame;
 
@@ -112,7 +117,9 @@ impl FrameWriter {
         let mut guard = inner.guard::<SignalDataFrame>();
         for table in tables {
             let table = table.map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
-            guard.write_table2(&table).map_err(|_| PyException::new_err("Failed to write table"))?;
+            guard
+                .write_table2(&table)
+                .map_err(|_| PyException::new_err("Failed to write table"))?;
         }
         Ok(())
     }
@@ -211,7 +218,6 @@ impl FrameReader {
     }
 }
 
-
 /// Formats the sum of two numbers as string.
 #[pyfunction]
 fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
@@ -239,7 +245,11 @@ fn pod5frame(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 fn utils(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let submodule = PyModule::new(m.py(), "utils")?;
-    py_run!(m.py(), submodule, "import sys; sys.modules['pod5frame.utils'] = submodule");
+    py_run!(
+        m.py(),
+        submodule,
+        "import sys; sys.modules['pod5frame.utils'] = submodule"
+    );
     submodule.add_function(wrap_pyfunction!(svb16_decode, &submodule)?)?;
     submodule.add_function(wrap_pyfunction!(svb16_encode, &submodule)?)?;
     m.add_submodule(&submodule)?;

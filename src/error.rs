@@ -34,7 +34,6 @@ pub enum Pod5Error {
     #[error("Problem with reading metadata: {0}")]
     ReadMetadataError(PolarsError),
 
-
     /// Error occured in the DataFrame API from polars
     #[error("{0}")]
     PolarsError(#[from] polars::prelude::PolarsError),

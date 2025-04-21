@@ -1,6 +1,10 @@
 use std::{env, fs::File, path::PathBuf};
 
-use pod5::{dataframe::{ReadDataFrame, RunInfoDataFrame, SignalDataFrame}, reader::Reader, writer::Writer};
+use pod5::{
+    dataframe::{ReadDataFrame, RunInfoDataFrame, SignalDataFrame},
+    reader::Reader,
+    writer::Writer,
+};
 
 fn main() {
     let input = env::args().nth(1).unwrap();

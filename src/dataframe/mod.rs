@@ -299,15 +299,19 @@ pub(crate) fn get_next_df(
 ) -> Option<Result<DataFrame, Pod5Error>> {
     // TODO: Remove unwrap and avoid Option since it
     // can hide conversion problems
-    table_reader.next().map(|chunk| chunk.map(|batch| {
-            let mut acc = Vec::with_capacity(fields.len());
-            for (arr, f) in batch.into_arrays().into_iter().zip(fields.iter()) {
-                let s = compatibility::array_to_series(f, arr);
-                acc.push(s);
-            }
+    table_reader.next().map(|chunk| {
+        chunk
+            .map(|batch| {
+                let mut acc = Vec::with_capacity(fields.len());
+                for (arr, f) in batch.into_arrays().into_iter().zip(fields.iter()) {
+                    let s = compatibility::array_to_series(f, arr);
+                    acc.push(s);
+                }
 
-            polars::prelude::DataFrame::from_iter(acc)
-        }).map_err(Pod5Error::PolarsError))
+                polars::prelude::DataFrame::from_iter(acc)
+            })
+            .map_err(Pod5Error::PolarsError)
+    })
     // if let Some(chunk) = Some(table_reader.next()?.unwrap()) {
     //     let mut acc = Vec::with_capacity(fields.len());
     //     for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
