@@ -562,7 +562,7 @@ where
         }
         Ok(())
     }
-    fn finish2(mut self) -> Result<(), WriteError> {
+    pub fn finish2(mut self) -> Result<(), WriteError> {
         if let Some(TableWriter::PostInit(mut x)) = self.inner.take() {
             x.finish()?;
             let inner = x.into_inner();

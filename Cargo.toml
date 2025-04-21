@@ -3,6 +3,7 @@ members = [
     "examples/arrow-example",
     "examples/convert-to-slow5",
     "examples/find-all-reads",
+    "examples/pod5-cp",
     "pod5frame-py",
 ]
 
