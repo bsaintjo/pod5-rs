@@ -309,6 +309,7 @@ impl<W: Write + Seek> Writer<W> {
             .writer
             .stream_position()
             .map_err(WriteError::StreamPositionError)?;
+        // Padding the footer to 8-byte boundary
         let padding = 8 - (new_position % 8);
         self.write_all(&vec![0u8; padding as usize]).unwrap();
         self.write_section_marker().unwrap();
@@ -347,15 +348,23 @@ impl<W: Write + Seek> Writer<W> {
 
     fn write_footer(&mut self) -> Result<u64, WriteError> {
         let footer = build_footer2(&self.file_identifier, &self.tables);
-        // let padding_len = footer.len() % 8;
-        // footer.extend_from_slice(&vec![0; padding_len]);
         self.writer
             .write_all(&footer)
             .map_err(WriteError::FailedToWriteFooter)?;
+
+        // let position = self
+        //     .writer
+        //     .stream_position()
+        //     .map_err(WriteError::StreamPositionError)?;
+        // // Padding the footer to 8-byte boundary
+        // let padding = 8 - (position % 8);
+        // self.write_all(&vec![0u8; padding as usize]).unwrap();
+
         let footer_len_bytes = (footer.len() as i64).to_le_bytes();
         self.writer
             .write_all(&footer_len_bytes)
             .map_err(|_| WriteError::FailedToWriteFooterLengthBytes)?;
+
         Ok(footer.len() as u64)
     }
 
@@ -383,6 +392,17 @@ impl<W: Write + Seek> Writer<W> {
             metadata,
             table: PhantomData,
         }
+    }
+
+    pub fn with_guard<T, F>(&mut self, mut closure: F) -> Result<(), WriteError>
+    where
+        T: IntoTable,
+        F: FnMut(&mut TableWriteGuard<W, T>) -> Result<(), WriteError>,
+    {
+        let mut guard = self.guard::<T>();
+        closure(&mut guard)?;
+        guard.finish2()?;
+        Ok(())
     }
 }
 
@@ -529,7 +549,7 @@ where
         Ok(())
     }
 
-    pub fn write_table2<D: IntoTable>(&mut self, df: &D) -> Result<(), WriteError> {
+    pub fn write_table2(&mut self, df: &T) -> Result<(), WriteError> {
         let batch = df
             .as_dataframe()
             .iter_chunks(CompatLevel::newest(), false)
@@ -883,9 +903,16 @@ mod test {
         // writer.write_tables_with(|guard| guard.write_table(&read_df)).unwrap();
         // let guard = writer.write_and_guard(&read_df).unwrap();
         // guard.finish2().unwrap();
-        let mut guard = writer.guard::<ReadDataFrame>();
-        guard.write_table2(&read_df).unwrap();
-        guard.finish2().unwrap();
+        // let mut guard = writer.guard::<ReadDataFrame>();
+        // guard.write_table2(&read_df).unwrap();
+        // guard.finish2().unwrap();
+        writer
+            .with_guard::<ReadDataFrame, _>(|guard| {
+                guard.write_table2(&read_df)?;
+                guard.write_table2(&read_df)?;
+                Ok(())
+            })
+            .unwrap();
         // writer.write_dataframe(&read_df).unwrap();
 
         writer._finish().unwrap();
@@ -907,6 +934,10 @@ mod test {
 
         let mut reads_rt = reader.read_dfs().unwrap();
         let read_df_rt = reads_rt.next().unwrap().unwrap();
+
+        // We wrote two batches so this should not panic
+        let _ = reads_rt.next().unwrap().unwrap();
+        assert_eq!(read_df_rt, read_df);
         println!("read complete");
     }
 
