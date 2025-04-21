@@ -118,7 +118,7 @@ impl FrameWriter {
         for table in tables {
             let table = table.map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
             guard
-                .write_table2(&table)
+                .write_batch(&table)
                 .map_err(|_| PyException::new_err("Failed to write table"))?;
         }
         Ok(())

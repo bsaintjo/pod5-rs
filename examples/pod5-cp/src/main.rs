@@ -23,21 +23,21 @@ fn main() {
     let mut guard = writer.guard::<SignalDataFrame>();
     for df in reader.signal_dfs().unwrap() {
         let df = df.unwrap();
-        guard.write_table2(&df).unwrap();
+        guard.write_batch(&df).unwrap();
     }
     guard.finish2().unwrap();
 
     let mut guard = writer.guard::<ReadDataFrame>();
     for df in reader.read_dfs().unwrap() {
         let df = df.unwrap();
-        guard.write_table2(&df).unwrap();
+        guard.write_batch(&df).unwrap();
     }
     guard.finish2().unwrap();
 
     let mut guard = writer.guard::<RunInfoDataFrame>();
     for df in reader.run_info_dfs().unwrap() {
         let df = df.unwrap();
-        guard.write_table2(&df).unwrap();
+        guard.write_batch(&df).unwrap();
     }
     guard.finish2().unwrap();
 
