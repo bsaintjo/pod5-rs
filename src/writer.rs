@@ -90,7 +90,7 @@ pub struct TableBatch {
 }
 
 pub trait IntoTable {
-    fn into_record_batch(self) -> TableBatch;
+    // fn into_record_batch(self) -> TableBatch;
     fn as_dataframe(&self) -> &DataFrame;
     fn content_type() -> TableContent;
 }
@@ -113,9 +113,9 @@ impl IntoTable for SignalDataFrame {
         &self.0
     }
 
-    fn into_record_batch(self) -> TableBatch{
-        _into_record_batch(&self.0)
-    }
+    // fn into_record_batch(self) -> TableBatch{
+    //     _into_record_batch(&self.0)
+    // }
 
     fn content_type() -> TableContent {
         TableContent::Signal
@@ -127,9 +127,9 @@ impl IntoTable for ReadDataFrame {
         &self.0
     }
 
-    fn into_record_batch(self) -> TableBatch {
-        _into_record_batch(&self.0)
-    }
+    // fn into_record_batch(self) -> TableBatch {
+    //     _into_record_batch(&self.0)
+    // }
 
     fn content_type() -> TableContent {
         TableContent::Read
@@ -140,27 +140,27 @@ impl IntoTable for RunInfoDataFrame {
         &self.0
     }
 
-    fn into_record_batch(self) -> TableBatch {
-        _into_record_batch(&self.0)
-    }
+    // fn into_record_batch(self) -> TableBatch {
+    //     _into_record_batch(&self.0)
+    // }
 
     fn content_type() -> TableContent {
         TableContent::RunInfo
     }
 }
 
-fn _into_record_batch(df: &polars::prelude::DataFrame) -> TableBatch {
-    let field_arrays = df
-        .iter()
-        .map(|s| series_to_array(s.clone()))
-        .collect::<Vec<_>>();
-    let schema = Arc::new(field_arrs_to_schema(&field_arrays));
-    let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
-    TableBatch {
-        batch: chunk,
-        schema,
-    }
-}
+// fn _into_record_batch(df: &polars::prelude::DataFrame) -> TableBatch {
+//     let field_arrays = df
+//         .iter()
+//         .map(|s| series_to_array(s.clone()))
+//         .collect::<Vec<_>>();
+//     let schema = Arc::new(field_arrs_to_schema(&field_arrays));
+//     let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
+//     TableBatch {
+//         batch: chunk,
+//         schema,
+//     }
+// }
 struct TableInfo {
     offset: i64,
     length: i64,
@@ -739,29 +739,29 @@ mod test {
         let _ = get_next_df(&fields, &mut reader);
     }
 
-    #[test]
-    fn test_dictionary_df_roundtrip() {
-        let mut dict_column =
-            CategoricalChunkedBuilder::new("test".into(), 10, CategoricalOrdering::Physical);
-        dict_column.append_value("alpha");
-        dict_column.append_value("beta");
-        dict_column.append_null();
-        dict_column.register_value("gamma");
-        let dict_column = dict_column.finish().into_series().into_frame();
-        let buf = Cursor::new(Vec::new());
-        let chunk = _into_record_batch(&dict_column);
-        let mut writer =
-            FileWriter::try_new(buf, chunk.schema.clone(), None, Default::default()).unwrap();
-        writer.write(&chunk.batch, None).unwrap();
-        writer.finish().unwrap();
+    // #[test]
+    // fn test_dictionary_df_roundtrip() {
+    //     let mut dict_column =
+    //         CategoricalChunkedBuilder::new("test".into(), 10, CategoricalOrdering::Physical);
+    //     dict_column.append_value("alpha");
+    //     dict_column.append_value("beta");
+    //     dict_column.append_null();
+    //     dict_column.register_value("gamma");
+    //     let dict_column = dict_column.finish().into_series().into_frame();
+    //     let buf = Cursor::new(Vec::new());
+    //     let chunk = _into_record_batch(&dict_column);
+    //     let mut writer =
+    //         FileWriter::try_new(buf, chunk.schema.clone(), None, Default::default()).unwrap();
+    //     writer.write(&chunk.batch, None).unwrap();
+    //     writer.finish().unwrap();
 
-        let mut buf = writer.into_inner();
-        buf.rewind().unwrap();
-        let metadata = read_file_metadata(&mut buf).unwrap();
+    //     let mut buf = writer.into_inner();
+    //     buf.rewind().unwrap();
+    //     let metadata = read_file_metadata(&mut buf).unwrap();
 
-        let mut reader = FileReader::new(buf, metadata, None, None);
-        let _ = reader.next().unwrap().unwrap();
-    }
+    //     let mut reader = FileReader::new(buf, metadata, None, None);
+    //     let _ = reader.next().unwrap().unwrap();
+    // }
 
     // #[test]
     // fn test_dictionary_roundtrip() {

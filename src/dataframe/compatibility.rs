@@ -18,6 +18,7 @@ use polars_arrow::{
 use polars_schema::Schema;
 use uuid::Uuid;
 
+use super::SignalDataFrame;
 use crate::svb16;
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays
@@ -96,6 +97,44 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
         _ => {
             panic!("unimplemented datatype: {:?}", field);
         }
+    }
+}
+
+struct Converter<T> {
+    arr: Box<dyn Array>,
+    field: pl::ArrowField,
+    schema: ArrowSchemaRef,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl Converter<SignalDataFrame> {
+    fn new(arr: Box<dyn Array>, field: pl::ArrowField, schema: ArrowSchemaRef) -> Self {
+        Self {
+            arr,
+            field,
+            schema,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    fn convert(self) -> Result<FieldArray, PolarsError> {
+        let mut new_chunks = Vec::with_capacity(self.schema.len());
+
+        match self.field.name.as_str() {
+            "minknow.vbz" => {
+                let farr = minknow_vbz_to_large_binary(&self.field, vec![self.arr])?;
+                new_chunks.push(farr.arr);
+            }
+            "minknow.uuid" => {
+                let farr = minknow_uuid_to_fixed_size_binary(&self.field, vec![self.arr])?;
+                new_chunks.push(farr.arr);
+            }
+            _ => {
+                let farr = FieldArray::new(self.field.clone(), self.arr.clone());
+                new_chunks.push(farr.arr);
+            }
+        }
+        todo!()
     }
 }
 
@@ -282,26 +321,26 @@ fn minknow_uuid_to_fixed_size_binary(
 /// Main entrypoint for series conversion. By default it converts the arrays as
 /// is, but for columns that are converted by array_to_series, we need to
 /// convert back to the original type used in POD5 tables.
-pub(crate) fn series_to_array(series: Series) -> FieldArray {
-    let name = series.name().clone();
-    let field = series
-        .dtype()
-        .to_arrow_field(name.clone(), CompatLevel::newest());
-    log::debug!("series_to_array: {field:?}");
-    let chunks = series.into_chunks();
-    log::debug!("example chunk: {:?}", &chunks[0]);
-    match (field.name.as_str(), &field.dtype) {
-        ("minknow.vbz", _) => minknow_vbz_to_large_binary(&field, chunks).unwrap(),
-        ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(&field, chunks).unwrap(),
-        _ => {
-            let chunks = chunks.iter().map(|b| b.as_ref()).collect::<Vec<_>>();
-            let acc = concatenate::concatenate(&chunks).unwrap();
-            let farr = FieldArray::new(field, acc);
-            log::debug!("series_to_array: {farr:?}");
-            farr
-        }
-    }
-}
+// pub(crate) fn series_to_array(series: Series) -> FieldArray {
+//     let name = series.name().clone();
+//     let field = series
+//         .dtype()
+//         .to_arrow_field(name.clone(), CompatLevel::newest());
+//     log::debug!("series_to_array: {field:?}");
+//     let chunks = series.into_chunks();
+//     log::debug!("example chunk: {:?}", &chunks[0]);
+//     match (field.name.as_str(), &field.dtype) {
+//         ("minknow.vbz", _) => minknow_vbz_to_large_binary(&field, chunks).unwrap(),
+//         ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(&field, chunks).unwrap(),
+//         _ => {
+//             let chunks = chunks.iter().map(|b| b.as_ref()).collect::<Vec<_>>();
+//             let acc = concatenate::concatenate(&chunks).unwrap();
+//             let farr = FieldArray::new(field, acc);
+//             log::debug!("series_to_array: {farr:?}");
+//             farr
+//         }
+//     }
+// }
 
 #[derive(Debug, thiserror::Error)]
 pub enum CompatError {
@@ -356,77 +395,79 @@ mod test {
             .try_init();
     }
 
-    #[test]
-    fn test_series_to_array_minknow_uuid() {
-        init();
-        let example = String::from("67e55044-10b1-426f-9247-bb680e5fe0c8");
-        let series = Series::new("minknow.uuid".into(), [example]);
-        let farr = series_to_array(series);
-    }
+    // #[test]
+    // fn test_series_to_array_minknow_uuid() {
+    //     init();
+    //     let example = String::from("67e55044-10b1-426f-9247-bb680e5fe0c8");
+    //     let series = Series::new("minknow.uuid".into(), [example]);
+    //     let farr = series_to_array(series);
+    // }
 
-    #[test]
-    fn test_series_to_array_minknow_vbz() {
-        init();
-        let example = Some(b"test" as &[u8]);
-        let series = Series::new("minknow.vbz".into(), [example]);
-        let farr = series_to_array(series);
-    }
+    // #[test]
+    // fn test_series_to_array_minknow_vbz() {
+    //     init();
+    //     let example = Some(b"test" as &[u8]);
+    //     let series = Series::new("minknow.vbz".into(), [example]);
+    //     let farr = series_to_array(series);
+    // }
 
-    #[test]
-    fn test_series_to_array_samples() {
-        init();
-        let example = [Some(717u32), Some(123u32)];
-        let series = Series::new("samples".into(), example);
-        let farr = series_to_array(series);
-    }
+    // #[test]
+    // fn test_series_to_array_samples() {
+    //     init();
+    //     let example = [Some(717u32), Some(123u32)];
+    //     let series = Series::new("samples".into(), example);
+    //     let farr = series_to_array(series);
+    // }
 
-    #[test]
-    fn test_writer() {
-        init();
-        let example = Some(b"test" as &[u8]);
-        let series = Series::new("minknow.vbz".into(), [example]);
-        let farr = vec![series_to_array(series)];
-        let schema = Arc::new(field_arrs_to_schema(&farr));
-        let chunk = field_arrs_to_record_batch(farr, schema.clone());
+    // #[test]
+    // fn test_writer() {
+    //     init();
+    //     let example = Some(b"test" as &[u8]);
+    //     let series = Series::new("minknow.vbz".into(), [example]);
+    //     let farr = vec![series_to_array(series)];
+    //     let schema = Arc::new(field_arrs_to_schema(&farr));
+    //     let chunk = field_arrs_to_record_batch(farr, schema.clone());
 
-        let buf: Vec<u8> = Vec::new();
-        let mut writer =
-            ArrowFileWriter::try_new(buf, schema.clone(), None, WriteOptions::default()).unwrap();
-        writer.write(&chunk, None).unwrap();
-        writer.finish().unwrap();
-    }
+    //     let buf: Vec<u8> = Vec::new();
+    //     let mut writer =
+    //         ArrowFileWriter::try_new(buf, schema.clone(), None,
+    // WriteOptions::default()).unwrap();     writer.write(&chunk,
+    // None).unwrap();     writer.finish().unwrap();
+    // }
 
-    #[test]
-    fn test_df() {
-        init();
-        let cal = Calibration(
-            [(
-                "67e55044-10b1-426f-9247-bb680e5fe0c8".into(),
-                AdcData {
-                    offset: 0.0,
-                    scale: 1.0,
-                },
-            )]
-            .into_iter()
-            .collect(),
-        );
-        let df = SignalDataFrame(df!("minknow.uuid" => ["67e55044-10b1-426f-9247-bb680e5fe0c8", "67e55044-10b1-426f-9247-bb680e5fe0c8"],
-                                                          "minknow.vbz" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32, 0.4f32].iter().collect::<Series>()],
-                                                          "samples" => [2u32, 2u32],
-                                                         ).unwrap());
-        println!("{df:?}");
-        let df = df.with_adc(&cal);
-        println!("{df:?}");
-        let field_arrays =
-            df.0.iter()
-                .map(|s| series_to_array(s.clone()))
-                .collect::<Vec<_>>();
-        let schema = Arc::new(field_arrs_to_schema(&field_arrays));
-        let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
-        let buf: Vec<u8> = Vec::new();
-        let mut writer =
-            ArrowFileWriter::try_new(buf, schema.clone(), None, WriteOptions::default()).unwrap();
-        writer.write(&chunk, None).unwrap();
-        writer.finish().unwrap();
-    }
+    // #[test]
+    // fn test_df() {
+    //     init();
+    //     let cal = Calibration(
+    //         [(
+    //             "67e55044-10b1-426f-9247-bb680e5fe0c8".into(),
+    //             AdcData {
+    //                 offset: 0.0,
+    //                 scale: 1.0,
+    //             },
+    //         )]
+    //         .into_iter()
+    //         .collect(),
+    //     );
+    //     let df = SignalDataFrame(df!("minknow.uuid" =>
+    // ["67e55044-10b1-426f-9247-bb680e5fe0c8",
+    // "67e55044-10b1-426f-9247-bb680e5fe0c8"],                             
+    // "minknow.vbz" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32,
+    // 0.4f32].iter().collect::<Series>()],                                 
+    // "samples" => [2u32, 2u32],                                           
+    // ).unwrap());     println!("{df:?}");
+    //     let df = df.with_adc(&cal);
+    //     println!("{df:?}");
+    //     let field_arrays =
+    //         df.0.iter()
+    //             .map(|s| series_to_array(s.clone()))
+    //             .collect::<Vec<_>>();
+    //     let schema = Arc::new(field_arrs_to_schema(&field_arrays));
+    //     let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
+    //     let buf: Vec<u8> = Vec::new();
+    //     let mut writer =
+    //         ArrowFileWriter::try_new(buf, schema.clone(), None,
+    // WriteOptions::default()).unwrap();     writer.write(&chunk,
+    // None).unwrap();     writer.finish().unwrap();
+    // }
 }
