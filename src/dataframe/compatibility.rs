@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use polars::{
-    chunked_array::iterator::par::list,
     datatypes::ArrowDataType,
     error::PolarsError,
-    prelude::{self as pl, ArrowField, CompatLevel, LargeBinaryArray, LargeListArray, PlSmallStr},
+    prelude::{self as pl, ArrowField, LargeBinaryArray, PlSmallStr},
     series::Series,
 };
 use polars_arrow::{
@@ -12,13 +11,16 @@ use polars_arrow::{
         Array, BinaryViewArray, FixedSizeBinaryArray, Float32Array, Int16Array, ListArray,
         MapArray, MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray, MutableUtf8Array,
         StructArray, Utf8Array, Utf8ViewArray,
-    }, compute::concatenate, datatypes::{ArrowSchemaRef, ExtensionType}, offset::OffsetsBuffer, record_batch::RecordBatchT
+    },
+    datatypes::{ArrowSchemaRef, ExtensionType},
+    offset::OffsetsBuffer,
+    record_batch::RecordBatchT,
 };
 use polars_schema::Schema;
 use uuid::Uuid;
 
 use super::SignalDataFrame;
-use crate::{dataframe::schema::{map_field, name_field}, svb16};
+use crate::{dataframe::schema::map_field, svb16};
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays
 /// except the Extensions. In order for properly handle Extension types, the
@@ -388,6 +390,31 @@ pub(crate) fn record_batch_to_compat(
     Ok(RecordBatchT::new(height, Arc::new(new_schema), new_chunks))
 }
 
+fn convert_map_struct_arr(struct_arr: StructArray) -> StructArray {
+    let (fields, length, data, validity) = struct_arr.clone().into_data();
+    let data = data
+        .into_iter()
+        .map(|datum| {
+            let mut utf8_arr: MutableUtf8Array<i32> = MutableUtf8Array::new();
+            datum
+                .as_any()
+                .downcast_ref::<Utf8ViewArray>()
+                .unwrap()
+                .iter()
+                .for_each(|s| utf8_arr.push(s));
+            <Utf8Array<i32> as From<MutableUtf8Array<i32>>>::from(utf8_arr).boxed()
+        })
+        .collect::<Vec<_>>();
+
+    let fields = vec![
+        ArrowField::new("key".into(), ArrowDataType::Utf8, false),
+        ArrowField::new("value".into(), ArrowDataType::Utf8, false),
+    ];
+
+    let new_dt = ArrowDataType::Struct(fields);
+    StructArray::new(new_dt, length, data, validity)
+}
+
 fn context_tags_to_map(
     field: &ArrowField,
     chunks: Vec<Box<dyn Array>>,
@@ -397,20 +424,11 @@ fn context_tags_to_map(
     log::debug!("chunks: {chunks:?}");
     let new_field: ArrowField = map_field("context_tags").1;
     log::debug!("New field: {new_field:?}");
-    let list_arr = chunks
-        .into_iter()
-        .next()
-        .unwrap();
-    let list_arr = list_arr
-        .as_any()
-        .downcast_ref::<ListArray<i64>>()
-        .unwrap();
+    let list_arr = chunks.into_iter().next().unwrap();
+    let list_arr = list_arr.as_any().downcast_ref::<ListArray<i64>>().unwrap();
     let offsets = OffsetsBuffer::try_from(list_arr.offsets()).unwrap();
     let validity = list_arr.validity();
-    let chunk = list_arr.into_iter()
-        .next()
-        .unwrap()
-        .unwrap();
+    let chunk = list_arr.into_iter().next().unwrap().unwrap();
     // let mut key = name_field("key", ArrowDataType::Utf8).1;
     // let value = name_field("value", ArrowDataType::Utf8).1;
     // key.is_nullable = false;
@@ -427,17 +445,35 @@ fn context_tags_to_map(
         }),
         false,
     );
-    // let struct_arr = chunk.as_any().downcast_ref::<StructArray>().unwrap();
-    
-    // .as_any()
-    // .downcast_ref::<structarray>()
-    // .unwrap()
-    // .clone()
-    // .boxed();
-    log::debug!("field dtype{:?}", chunk.dtype());
-    log::debug!("dt {:?}", dt);
+    let struct_arr = chunk.as_any().downcast_ref::<StructArray>().unwrap();
+    let struct_arr = convert_map_struct_arr(struct_arr.clone());
+    // for kv in struct_arr.values() {
+    //     log::debug!("origin arr {:?}", kv);
+    //     let mut utf8_arr: MutableUtf8Array<i32> = MutableUtf8Array::new();
+    //     kv.as_any()
+    //         .downcast_ref::<Utf8ViewArray>()
+    //         .unwrap()
+    //         .iter()
+    //         .for_each(|s| utf8_arr.push(s));
+    //     log::debug!(
+    //         "utf8 arr {:?}",
+    //         <Utf8Array<i32> as From<MutableUtf8Array<i32>>>::from(utf8_arr)
+    //     )
+    //     // log::debug!("k {:?}", kv[0]);
+    //     // log::debug!("kdt {:?}", kv[0].dtype());
+    //     // log::debug!("karr {:?}",
+    //     // kv[0].as_any().downcast_ref::<BinaryViewScalar<str>>().unwrap());
+    //     // log::debug!("v {:?}", kv[1]);
+    //     // log::debug!("vdt {:?}", kv[1].dtype());
+    //     // log::debug!("varr {:?}",
+    //     // kv[1].as_any().downcast_ref::<BinaryViewScalar<str>>().unwrap());
+    // }
 
-    let map_array = MapArray::new(dt, offsets, chunk, validity.cloned());
+    log::debug!("field dtype {:?}", chunk.dtype());
+    log::debug!("dt {:?}", dt);
+    log::debug!("new struct {:?}", struct_arr.dtype());
+
+    let map_array = MapArray::new(dt, offsets, struct_arr.boxed(), validity.cloned());
     // chunks.into_iter().for_each(|chunk| {
     //     for struct_arr in
     // chunk.as_any().downcast_ref::<ListArray<i64>>().unwrap() {         let
