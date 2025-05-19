@@ -19,11 +19,7 @@ use uuid::Uuid;
 
 use crate::{
     dataframe::{
-        compatibility::{
-            field_arrs_to_record_batch, field_arrs_to_schema, record_batch_to_compat,
-            series_to_array,
-        },
-        ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
+        compatibility::record_batch_to_compat, ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
     },
     footer::footer_generated::minknow::reads_format::{
         ContentType, EmbeddedFile, EmbeddedFileArgs, Footer, FooterArgs,
@@ -418,11 +414,12 @@ impl<W: Write + Seek> Writer<W> {
     /// # let mut writer = Writer::from_writer(buf).unwrap();
     /// # let mut run_info = reader.run_info_dfs().unwrap();
     /// # let run_info_df = run_info.next().unwrap().unwrap();
-    /// writer.with_guard::<RunInfoDataFrame, _>(|g| g.write_batch(&run_info_df))?;
-    /// 
+    /// writer.with_guard::<RunInfoDataFrame, _>(|g|
+    /// g.write_batch(&run_info_df))?;
+    ///
     /// /// Subsequent attempts to write run info tables will fail
-    /// assert!(writer.with_guard::<RunInfoDataFrame, _>(|g| g.write_batch(&run_info_df)).is_err());
-    /// #}
+    /// assert!(writer.with_guard::<RunInfoDataFrame, _>(|g|
+    /// g.write_batch(&run_info_df)).is_err()); #}
     /// ```
     pub fn with_guard<T, F>(&mut self, mut closure: F) -> Result<(), WriteError>
     where
@@ -430,9 +427,13 @@ impl<W: Write + Seek> Writer<W> {
         F: FnMut(&mut TableWriteGuard<W, T>) -> Result<(), WriteError>,
     {
         if T::content_type().into_content_type() != ContentType::OtherIndex
-            && self.contents_writtens.contains(&T::content_type().into_content_type())
+            && self
+                .contents_writtens
+                .contains(&T::content_type().into_content_type())
         {
-            return Err(WriteError::ContentTypeAlreadyWritten(T::content_type().into_content_type()));
+            return Err(WriteError::ContentTypeAlreadyWritten(
+                T::content_type().into_content_type(),
+            ));
         }
         let mut guard = self.guard::<T>();
         closure(&mut guard)?;
@@ -742,8 +743,8 @@ mod test {
     // #[test]
     // fn test_dictionary_df_roundtrip() {
     //     let mut dict_column =
-    //         CategoricalChunkedBuilder::new("test".into(), 10, CategoricalOrdering::Physical);
-    //     dict_column.append_value("alpha");
+    //         CategoricalChunkedBuilder::new("test".into(), 10,
+    // CategoricalOrdering::Physical);     dict_column.append_value("alpha");
     //     dict_column.append_value("beta");
     //     dict_column.append_null();
     //     dict_column.register_value("gamma");
@@ -751,9 +752,9 @@ mod test {
     //     let buf = Cursor::new(Vec::new());
     //     let chunk = _into_record_batch(&dict_column);
     //     let mut writer =
-    //         FileWriter::try_new(buf, chunk.schema.clone(), None, Default::default()).unwrap();
-    //     writer.write(&chunk.batch, None).unwrap();
-    //     writer.finish().unwrap();
+    //         FileWriter::try_new(buf, chunk.schema.clone(), None,
+    // Default::default()).unwrap();     writer.write(&chunk.batch,
+    // None).unwrap();     writer.finish().unwrap();
 
     //     let mut buf = writer.into_inner();
     //     buf.rewind().unwrap();

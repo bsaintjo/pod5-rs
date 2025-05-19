@@ -28,7 +28,7 @@ where
     )
 }
 
-fn name_field<S: Into<PlSmallStr>>(name: S, dtype: ArrowDataType) -> (PlSmallStr, ArrowField) {
+pub(crate) fn name_field<S: Into<PlSmallStr>>(name: S, dtype: ArrowDataType) -> (PlSmallStr, ArrowField) {
     let name = name.into();
     (
         name.clone(),
@@ -48,7 +48,7 @@ fn dictionary_field<S: Into<PlSmallStr>>(name: S) -> (PlSmallStr, ArrowField) {
     )
 }
 
-fn map_field<S: Into<PlSmallStr>>(name: S) -> (PlSmallStr, ArrowField) {
+pub(crate) fn map_field<S: Into<PlSmallStr>>(name: S) -> (PlSmallStr, ArrowField) {
     let mut key = name_field("key", ArrowDataType::Utf8).1;
     let value = name_field("value", ArrowDataType::Utf8).1;
     key.is_nullable = false;

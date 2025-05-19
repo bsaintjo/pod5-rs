@@ -1,25 +1,24 @@
 use std::sync::Arc;
 
 use polars::{
+    chunked_array::iterator::par::list,
     datatypes::ArrowDataType,
     error::PolarsError,
-    prelude::{self as pl, ArrowField, CompatLevel, LargeBinaryArray, PlSmallStr},
+    prelude::{self as pl, ArrowField, CompatLevel, LargeBinaryArray, LargeListArray, PlSmallStr},
     series::Series,
 };
 use polars_arrow::{
     array::{
         Array, BinaryViewArray, FixedSizeBinaryArray, Float32Array, Int16Array, ListArray,
-        MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray, Utf8Array, Utf8ViewArray,
-    },
-    compute::concatenate,
-    datatypes::{ArrowSchemaRef, ExtensionType},
-    record_batch::RecordBatchT,
+        MapArray, MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray, MutableUtf8Array,
+        StructArray, Utf8Array, Utf8ViewArray,
+    }, compute::concatenate, datatypes::{ArrowSchemaRef, ExtensionType}, offset::OffsetsBuffer, record_batch::RecordBatchT
 };
 use polars_schema::Schema;
 use uuid::Uuid;
 
 use super::SignalDataFrame;
-use crate::svb16;
+use crate::{dataframe::schema::{map_field, name_field}, svb16};
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays
 /// except the Extensions. In order for properly handle Extension types, the
@@ -345,10 +344,17 @@ fn minknow_uuid_to_fixed_size_binary(
 #[derive(Debug, thiserror::Error)]
 pub enum CompatError {
     #[error("Error handing minknow.uuid column: {0}")]
-    MinknowUuidError(PolarsError),
+    MinknowUuid(PolarsError),
 
     #[error("Error handing minknow.vbz column: {0}")]
-    MinknowVbzError(PolarsError),
+    MinknowVbz(PolarsError),
+
+    #[error("Error converting field {0}, {1}")]
+    GeneralConversionError(&'static str, PolarsError),
+}
+
+pub(crate) fn convert_by(arr: Box<dyn Array>, dt: ArrowDataType) -> Box<dyn Array> {
+    todo!()
 }
 
 pub(crate) fn record_batch_to_compat(
@@ -361,16 +367,20 @@ pub(crate) fn record_batch_to_compat(
     let (schema, chunks) = batch.into_schema_and_arrays();
 
     for ((name, field), array) in schema.iter().zip(chunks.into_iter()) {
+        log::debug!("field {field:?}");
         let farr = match (name.as_str(), &field.dtype) {
-            ("minknow.vbz", _) => minknow_vbz_to_large_binary(field, vec![array])
-                .map_err(CompatError::MinknowVbzError)?,
-            ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
-                .map_err(CompatError::MinknowUuidError)?,
-            _ => {
-                let farr = FieldArray::new(field.clone(), array);
-                log::debug!("series_to_array: {farr:?}");
-                farr
+            ("minknow.vbz", _) => {
+                minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?
             }
+            ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
+                .map_err(CompatError::MinknowUuid)?,
+            ("acquisition_id", ArrowDataType::Utf8View) => {
+                aquisition_id_to_string(field, vec![array])
+                    .map_err(|e| CompatError::GeneralConversionError("acquisition_id", e))?
+            }
+            ("context_tags", _) => context_tags_to_map(field, vec![array])
+                .map_err(|e| CompatError::GeneralConversionError("acquisition_id", e))?,
+            _ => FieldArray::new(field.clone(), array),
         };
         new_schema.insert(name.clone(), farr.field);
         new_chunks.push(farr.arr);
@@ -378,12 +388,112 @@ pub(crate) fn record_batch_to_compat(
     Ok(RecordBatchT::new(height, Arc::new(new_schema), new_chunks))
 }
 
+fn context_tags_to_map(
+    field: &ArrowField,
+    chunks: Vec<Box<dyn Array>>,
+) -> Result<FieldArray, polars::error::PolarsError> {
+    log::debug!("Converting context tags");
+    log::debug!("Field: {field:?}");
+    log::debug!("chunks: {chunks:?}");
+    let new_field: ArrowField = map_field("context_tags").1;
+    log::debug!("New field: {new_field:?}");
+    let list_arr = chunks
+        .into_iter()
+        .next()
+        .unwrap();
+    let list_arr = list_arr
+        .as_any()
+        .downcast_ref::<ListArray<i64>>()
+        .unwrap();
+    let offsets = OffsetsBuffer::try_from(list_arr.offsets()).unwrap();
+    let validity = list_arr.validity();
+    let chunk = list_arr.into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+    // let mut key = name_field("key", ArrowDataType::Utf8).1;
+    // let value = name_field("value", ArrowDataType::Utf8).1;
+    // key.is_nullable = false;
+    let fields = vec![
+        ArrowField::new("key".into(), ArrowDataType::Utf8, false),
+        ArrowField::new("value".into(), ArrowDataType::Utf8, false),
+    ];
+    let dt = ArrowDataType::Map(
+        Box::new(ArrowField {
+            name: "entries".into(),
+            dtype: ArrowDataType::Struct(fields),
+            is_nullable: false,
+            metadata: None,
+        }),
+        false,
+    );
+    // let struct_arr = chunk.as_any().downcast_ref::<StructArray>().unwrap();
+    
+    // .as_any()
+    // .downcast_ref::<structarray>()
+    // .unwrap()
+    // .clone()
+    // .boxed();
+    log::debug!("field dtype{:?}", chunk.dtype());
+    log::debug!("dt {:?}", dt);
+
+    let map_array = MapArray::new(dt, offsets, chunk, validity.cloned());
+    // chunks.into_iter().for_each(|chunk| {
+    //     for struct_arr in
+    // chunk.as_any().downcast_ref::<ListArray<i64>>().unwrap() {         let
+    // struct_arr = struct_arr.unwrap();         let struct_arr =
+    // struct_arr.as_any().downcast_ref::<StructArray>().unwrap();         for
+    // pair in struct_arr.iter() {             if pair.is_some() {
+    //                 offset += 1;
+    //             }
+    //             offsets.push(offset);
+    //         }
+    //         log::debug!("{struct_arr:?}");
+    //     }
+    //     todo!()
+    // });
+    // panic!();
+    Ok(FieldArray {
+        field: new_field,
+        arr: map_array.to_boxed(),
+    })
+}
+
+fn aquisition_id_to_string(
+    field: &ArrowField,
+    chunks: Vec<Box<dyn Array>>,
+) -> Result<FieldArray, polars::error::PolarsError> {
+    log::debug!("Converting acquisition id");
+    let new_dt = ArrowDataType::Utf8;
+    let new_field = ArrowField::new(field.name.clone(), new_dt, true);
+    let mut acc: MutableUtf8Array<i32> = MutableUtf8Array::new();
+    chunks.into_iter().for_each(|chunk| match &field.dtype {
+        ArrowDataType::Utf8View => {
+            chunk
+                .as_any()
+                .downcast_ref::<Utf8ViewArray>()
+                .unwrap()
+                .values_iter()
+                .map(Some)
+                .for_each(|item| acc.push(item));
+        }
+        _ => todo!(),
+    });
+    log::debug!("New field: {new_field:?}");
+    let acc = acc.as_box();
+    Ok(FieldArray::new(new_field, acc))
+}
+
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
 
     use polars::{df, prelude::NamedFrom};
-    use polars_arrow::io::ipc::write::{FileWriter as ArrowFileWriter, WriteOptions};
+    use polars_arrow::{
+        array::{BooleanArray, Int32Array, MapArray, StructArray},
+        io::ipc::write::{FileWriter as ArrowFileWriter, WriteOptions},
+        offset::OffsetsBuffer,
+    };
 
     use super::*;
     use crate::dataframe::{AdcData, Calibration, SignalDataFrame};
@@ -393,6 +503,47 @@ mod test {
             .filter_level(log::LevelFilter::Trace)
             .is_test(true)
             .try_init();
+    }
+
+    #[test]
+    fn test_maparray() {
+        let boolean = BooleanArray::from_slice([false, false, true, true]).boxed();
+        let int = Int32Array::from_slice([42, 28, 19, 31]).boxed();
+
+        let fields = vec![
+            ArrowField::new("b".into(), ArrowDataType::Boolean, false),
+            ArrowField::new("c".into(), ArrowDataType::Int32, false),
+        ];
+
+        let array = StructArray::new(
+            ArrowDataType::Struct(fields.clone()),
+            4,
+            vec![boolean, int],
+            None,
+        );
+
+        let offsets = vec![0, 1, 2, 3, 4];
+        let dt = ArrowDataType::Map(
+            Box::new(ArrowField {
+                name: "entries".into(),
+                dtype: ArrowDataType::Struct(fields),
+                is_nullable: false,
+                metadata: None,
+            }),
+            false,
+        );
+
+        // Construct the MapArray
+        let map_array = MapArray::try_new(
+            dt,
+            OffsetsBuffer::try_from(offsets).unwrap(),
+            array.to_boxed(),
+            None,
+        )
+        .unwrap();
+
+        // Now you can use map_array in your application
+        println!("{:?}", map_array);
     }
 
     // #[test]
@@ -451,10 +602,10 @@ mod test {
     //     );
     //     let df = SignalDataFrame(df!("minknow.uuid" =>
     // ["67e55044-10b1-426f-9247-bb680e5fe0c8",
-    // "67e55044-10b1-426f-9247-bb680e5fe0c8"],                             
+    // "67e55044-10b1-426f-9247-bb680e5fe0c8"],
     // "minknow.vbz" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32,
-    // 0.4f32].iter().collect::<Series>()],                                 
-    // "samples" => [2u32, 2u32],                                           
+    // 0.4f32].iter().collect::<Series>()],
+    // "samples" => [2u32, 2u32],
     // ).unwrap());     println!("{df:?}");
     //     let df = df.with_adc(&cal);
     //     println!("{df:?}");
