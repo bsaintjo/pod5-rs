@@ -7,9 +7,12 @@ use pod5::{
 };
 
 fn main() {
-    let input = env::args().nth(1).unwrap();
-    let mut output = input.clone();
-    output.push_str("cp.pod5");
+    env_logger::init();
+
+    let mut args = env::args();
+    let _ = args.next();
+    let input = args.next().unwrap();
+    let output = args.next().unwrap();
 
     let input = PathBuf::from(input);
     let output = PathBuf::from(output);
