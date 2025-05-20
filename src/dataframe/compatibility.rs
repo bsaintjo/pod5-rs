@@ -352,7 +352,7 @@ pub enum CompatError {
     MinknowVbz(PolarsError),
 
     #[error("Error converting field {0}, {1}")]
-    GeneralConversionError(&'static str, PolarsError),
+    GeneralConversionError(String, PolarsError),
 }
 
 pub(crate) fn convert_by(arr: Box<dyn Array>, dt: ArrowDataType) -> Box<dyn Array> {
@@ -376,12 +376,12 @@ pub(crate) fn record_batch_to_compat(
             }
             ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
                 .map_err(CompatError::MinknowUuid)?,
-            ("acquisition_id", ArrowDataType::Utf8View) => {
-                aquisition_id_to_string(field, vec![array])
-                    .map_err(|e| CompatError::GeneralConversionError("acquisition_id", e))?
+            (name, ArrowDataType::Utf8View) => utf8view_to_utf8(field, vec![array])
+                .map_err(|e| CompatError::GeneralConversionError(name.to_string(), e))?,
+            (name @ ("context_tags" | "tracking_id"), _) => {
+                context_tags_to_map(name, field, vec![array])
+                    .map_err(|e| CompatError::GeneralConversionError(name.to_string(), e))?
             }
-            ("context_tags", _) => context_tags_to_map(field, vec![array])
-                .map_err(|e| CompatError::GeneralConversionError("acquisition_id", e))?,
             _ => FieldArray::new(field.clone(), array),
         };
         new_schema.insert(name.clone(), farr.field);
@@ -416,13 +416,14 @@ fn convert_map_struct_arr(struct_arr: StructArray) -> StructArray {
 }
 
 fn context_tags_to_map(
+    name: &str,
     field: &ArrowField,
     chunks: Vec<Box<dyn Array>>,
 ) -> Result<FieldArray, polars::error::PolarsError> {
     log::debug!("Converting context tags");
     log::debug!("Field: {field:?}");
     log::debug!("chunks: {chunks:?}");
-    let new_field: ArrowField = map_field("context_tags").1;
+    let new_field: ArrowField = map_field(name).1;
     log::debug!("New field: {new_field:?}");
     let list_arr = chunks.into_iter().next().unwrap();
     let list_arr = list_arr.as_any().downcast_ref::<ListArray<i64>>().unwrap();
@@ -495,7 +496,7 @@ fn context_tags_to_map(
     })
 }
 
-fn aquisition_id_to_string(
+fn utf8view_to_utf8(
     field: &ArrowField,
     chunks: Vec<Box<dyn Array>>,
 ) -> Result<FieldArray, polars::error::PolarsError> {
