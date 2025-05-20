@@ -40,7 +40,7 @@ use crate::{dataframe::schema::map_field, svb16};
 /// and split into components (offsets, bitmap, etc.) => LargeBinary::new with
 /// components => boxed to Box<dyn Array> => Series::try_from works properly
 pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Series {
-    log::debug!("{field:?}");
+    log::debug!("array_to_series: {field:?}");
     match Series::try_from((field, arr.clone())) {
         Ok(series) => return series,
         Err(e) => log::debug!("{e:?}, attempting conversion"),
@@ -51,8 +51,7 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
         ArrowDataType::Extension(bet)
             if bet.inner.to_logical_type() == &ArrowDataType::FixedSizeBinary(16) =>
         {
-            let field =
-                pl::ArrowField::new(PlSmallStr::from("minknow.uuid"), ArrowDataType::Utf8, true);
+            let field = pl::ArrowField::new(PlSmallStr::from("read_id"), ArrowDataType::Utf8, true);
             let arr = arr
                 .as_any()
                 .downcast_ref::<FixedSizeBinaryArray>()
@@ -126,7 +125,7 @@ impl Converter<SignalDataFrame> {
                 let farr = minknow_vbz_to_large_binary(&self.field, vec![self.arr])?;
                 new_chunks.push(farr.arr);
             }
-            "minknow.uuid" => {
+            "read_id" => {
                 let farr = minknow_uuid_to_fixed_size_binary(&self.field, vec![self.arr])?;
                 new_chunks.push(farr.arr);
             }
@@ -173,7 +172,7 @@ fn minknow_vbz_to_large_binary(
     chunks: Vec<Box<dyn Array>>,
 ) -> Result<FieldArray, polars::error::PolarsError> {
     let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
-        name: field.name.clone(),
+        name: "minknow.vbz".into(),
         inner: ArrowDataType::LargeBinary,
         metadata: None,
     }));
@@ -266,21 +265,22 @@ fn minknow_vbz_to_large_binary(
     Ok(FieldArray::new(new_field, acc.as_box()))
 }
 
-/// Convert a minknow.uuid array into a FixedSizeBinary array.
+/// Convert a read_id array into a FixedSizeBinary array.
 ///
-/// The minknow.uuid is usually a str column and we try to convert from
+/// The read_id is usually a str column and we try to convert from
 /// different types of Utf8* arrays.
 fn minknow_uuid_to_fixed_size_binary(
     field: &pl::ArrowField,
     chunks: Vec<Box<dyn Array>>,
 ) -> Result<FieldArray, polars::error::PolarsError> {
     let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
-        name: field.name.clone(),
+        name: "minknow.uuid".into(),
         inner: ArrowDataType::FixedSizeBinary(16),
         metadata: None,
     }));
-    let new_field = ArrowField::new(field.name.clone(), new_dt, true);
-    let mut acc = MutableFixedSizeBinaryArray::new(16);
+    let new_field = ArrowField::new(field.name.clone(), new_dt.clone(), true);
+    // let mut acc = MutableFixedSizeBinaryArray::new(16);
+    let mut acc = MutableFixedSizeBinaryArray::try_new(new_dt, Vec::new(), None).unwrap();
     chunks.into_iter().for_each(|chunk| {
         match &field.dtype {
             ArrowDataType::Utf8View | ArrowDataType::LargeUtf8 => {
@@ -315,7 +315,8 @@ fn minknow_uuid_to_fixed_size_binary(
             }
         };
     });
-    let acc = acc.as_box();
+    let acc = <FixedSizeBinaryArray as From<MutableFixedSizeBinaryArray>>::from(acc).boxed();
+    log::debug!("new read_id {acc:?}");
     Ok(FieldArray::new(new_field, acc))
 }
 
@@ -332,7 +333,7 @@ fn minknow_uuid_to_fixed_size_binary(
 //     log::debug!("example chunk: {:?}", &chunks[0]);
 //     match (field.name.as_str(), &field.dtype) {
 //         ("minknow.vbz", _) => minknow_vbz_to_large_binary(&field, chunks).unwrap(),
-//         ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(&field, chunks).unwrap(),
+//         ("read_id", _) => minknow_uuid_to_fixed_size_binary(&field, chunks).unwrap(),
 //         _ => {
 //             let chunks = chunks.iter().map(|b| b.as_ref()).collect::<Vec<_>>();
 //             let acc = concatenate::concatenate(&chunks).unwrap();
@@ -345,7 +346,7 @@ fn minknow_uuid_to_fixed_size_binary(
 
 #[derive(Debug, thiserror::Error)]
 pub enum CompatError {
-    #[error("Error handing minknow.uuid column: {0}")]
+    #[error("Error handing read_id column: {0}")]
     MinknowUuid(PolarsError),
 
     #[error("Error handing minknow.vbz column: {0}")]
@@ -369,12 +370,12 @@ pub(crate) fn record_batch_to_compat(
     let (schema, chunks) = batch.into_schema_and_arrays();
 
     for ((name, field), array) in schema.iter().zip(chunks.into_iter()) {
-        log::debug!("field {field:?}");
+        log::debug!("record_btach_to_compat, field {field:?}");
         let farr = match (name.as_str(), &field.dtype) {
             ("minknow.vbz", _) => {
                 minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?
             }
-            ("minknow.uuid", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
+            ("read_id", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
                 .map_err(CompatError::MinknowUuid)?,
             (name, ArrowDataType::Utf8View) => utf8view_to_utf8(field, vec![array])
                 .map_err(|e| CompatError::GeneralConversionError(name.to_string(), e))?,
@@ -587,7 +588,7 @@ mod test {
     // fn test_series_to_array_minknow_uuid() {
     //     init();
     //     let example = String::from("67e55044-10b1-426f-9247-bb680e5fe0c8");
-    //     let series = Series::new("minknow.uuid".into(), [example]);
+    //     let series = Series::new("read_id".into(), [example]);
     //     let farr = series_to_array(series);
     // }
 
@@ -637,7 +638,7 @@ mod test {
     //         .into_iter()
     //         .collect(),
     //     );
-    //     let df = SignalDataFrame(df!("minknow.uuid" =>
+    //     let df = SignalDataFrame(df!("read_id" =>
     // ["67e55044-10b1-426f-9247-bb680e5fe0c8",
     // "67e55044-10b1-426f-9247-bb680e5fe0c8"],
     // "minknow.vbz" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32,

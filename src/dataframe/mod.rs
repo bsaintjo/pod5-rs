@@ -42,7 +42,7 @@ struct SignalReadIndexer<R: Read + Seek> {
 
 #[derive(Debug, thiserror::Error)]
 enum IndexerError {
-    #[error("No minknow.uuid column was found.")]
+    #[error("No read_id column was found.")]
     NoMinknowUuid,
 }
 
@@ -58,7 +58,7 @@ where
             .iter()
             .map(|f| f.1)
             .enumerate()
-            .filter(|f| f.1.name == "minknow.uuid")
+            .filter(|f| f.1.name == "read_id")
             .collect();
 
         if fields.len() != 1 {
@@ -115,7 +115,7 @@ impl SignalDataFrame {
 
     /// Convert i16 ADC signal data into f32 picoamps
     pub fn to_picoamps(mut self, calibration: &Calibration) -> Self {
-        let adcs = self.0["minknow.uuid"]
+        let adcs = self.0["read_id"]
             .str()
             .unwrap()
             .into_iter()
@@ -132,7 +132,7 @@ impl SignalDataFrame {
 
     /// Convert f32 picoamps signal data into i16 ADC
     pub(crate) fn with_adc(mut self, calibration: &Calibration) -> Self {
-        let adcs = self.0["minknow.uuid"]
+        let adcs = self.0["read_id"]
             .str()
             .unwrap()
             .into_iter()
@@ -394,7 +394,7 @@ impl Calibration {
         for read_df in iter.flatten() {
             let df = read_df
                 .0
-                .select(["minknow.uuid", "calibration_offset", "calibration_scale"])
+                .select(["read_id", "calibration_offset", "calibration_scale"])
                 .unwrap();
             let iters = df.iter().collect::<Vec<_>>();
             for (read_id, offset, scale) in itertools::multizip((
