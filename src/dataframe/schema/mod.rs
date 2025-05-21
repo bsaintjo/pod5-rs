@@ -28,7 +28,10 @@ where
     )
 }
 
-pub(crate) fn name_field<S: Into<PlSmallStr>>(name: S, dtype: ArrowDataType) -> (PlSmallStr, ArrowField) {
+pub(crate) fn name_field<S: Into<PlSmallStr>>(
+    name: S,
+    dtype: ArrowDataType,
+) -> (PlSmallStr, ArrowField) {
     let name = name.into();
     (
         name.clone(),
