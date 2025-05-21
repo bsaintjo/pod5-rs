@@ -47,21 +47,22 @@ flatbuffers = "24.3.25"
 thiserror = "2.0.11"
 
 # DataFrame API
-polars-arrow = { version = "0.46.0", features = ["io_ipc"] }
-polars = { version = "0.46.0", features = [
+polars = { version = "0.48.1", features = [
     "dtype-full",
     "dtype-array",
     "timezones",
     "lazy",
     "list_arithmetic"
 ] }
+polars-arrow = { version = "0.48.1", features = ["io_ipc"] }
+polars-schema = "0.48.1"
 
 # Parsing read ids
 uuid = { version = "1.14.0", features = ["v4"] }
+
 log = "0.4.25"
 arrow = "54.2.0"
 lru = "0.13.0"
-polars-schema = "0.46.0"
 
 
 [dev-dependencies]
