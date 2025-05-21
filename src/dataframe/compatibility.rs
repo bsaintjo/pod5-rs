@@ -8,9 +8,9 @@ use polars::{
 };
 use polars_arrow::{
     array::{
-        Array, BinaryViewArray, FixedSizeBinaryArray, Float32Array, Int16Array, ListArray,
-        MapArray, MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray, MutableUtf8Array,
-        StructArray, Utf8Array, Utf8ViewArray,
+        Array, BinaryArray, BinaryViewArray, FixedSizeBinaryArray, Float32Array, Int16Array,
+        ListArray, MapArray, MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray,
+        MutableUtf8Array, StructArray, Utf8Array, Utf8ViewArray,
     },
     datatypes::{ArrowSchemaRef, ExtensionType},
     offset::OffsetsBuffer,
@@ -176,8 +176,10 @@ fn minknow_vbz_to_large_binary(
         inner: ArrowDataType::LargeBinary,
         metadata: None,
     }));
-    let new_field = ArrowField::new(field.name.clone(), new_dt, true);
-    let mut acc = MutableBinaryArray::<i64>::new();
+    let new_field = ArrowField::new(field.name.clone(), new_dt.clone(), true);
+    // let mut acc = MutableBinaryArray::<i64>::new();
+    let mut acc: MutableBinaryArray<i64> =
+        MutableBinaryArray::try_new(new_dt, Default::default(), Default::default(), None).unwrap();
     chunks.into_iter().for_each(|chunk| {
         match &field.dtype {
             ArrowDataType::BinaryView | ArrowDataType::LargeBinary => {
@@ -262,7 +264,8 @@ fn minknow_vbz_to_large_binary(
             _ => panic!("Invalid datatype for field: {field:?}"),
         };
     });
-    Ok(FieldArray::new(new_field, acc.as_box()))
+    let acc = <BinaryArray<i64> as From<MutableBinaryArray<i64>>>::from(acc).boxed();
+    Ok(FieldArray::new(new_field, acc))
 }
 
 /// Convert a read_id array into a FixedSizeBinary array.
