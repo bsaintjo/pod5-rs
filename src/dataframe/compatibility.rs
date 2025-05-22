@@ -74,7 +74,7 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
             if bet.inner.to_logical_type() == &ArrowDataType::LargeBinary =>
         {
             let field = pl::ArrowField::new(
-                PlSmallStr::from("minknow.vbz"),
+                PlSmallStr::from("signal"),
                 ArrowDataType::LargeBinary,
                 true,
             );
@@ -121,7 +121,7 @@ impl Converter<SignalDataFrame> {
         let mut new_chunks = Vec::with_capacity(self.schema.len());
 
         match self.field.name.as_str() {
-            "minknow.vbz" => {
+            "signal" => {
                 let farr = minknow_vbz_to_large_binary(&self.field, vec![self.arr])?;
                 new_chunks.push(farr.arr);
             }
@@ -163,14 +163,15 @@ pub(crate) fn field_arrs_to_record_batch(
     RecordBatchT::new(height, schema, arrays)
 }
 
-/// Converts a minknow.vbz array into a LargeBinary array.
+/// Converts a signal array into a LargeBinary array.
 ///
-/// The minknow.vbz can be a list[f32], list[i16], or list[u8](?) depending on
+/// The signal can be a list[f32], list[i16], or list[u8](?) depending on
 /// how it was processed.
 fn minknow_vbz_to_large_binary(
     field: &pl::ArrowField,
     chunks: Vec<Box<dyn Array>>,
 ) -> Result<FieldArray, polars::error::PolarsError> {
+    log::debug!("Converting signal minknow.vbz column");
     let new_dt = ArrowDataType::Extension(Box::new(ExtensionType {
         name: "minknow.vbz".into(),
         inner: ArrowDataType::LargeBinary,
@@ -335,7 +336,7 @@ fn minknow_uuid_to_fixed_size_binary(
 //     let chunks = series.into_chunks();
 //     log::debug!("example chunk: {:?}", &chunks[0]);
 //     match (field.name.as_str(), &field.dtype) {
-//         ("minknow.vbz", _) => minknow_vbz_to_large_binary(&field, chunks).unwrap(),
+//         ("signal", _) => minknow_vbz_to_large_binary(&field, chunks).unwrap(),
 //         ("read_id", _) => minknow_uuid_to_fixed_size_binary(&field, chunks).unwrap(),
 //         _ => {
 //             let chunks = chunks.iter().map(|b| b.as_ref()).collect::<Vec<_>>();
@@ -352,7 +353,7 @@ pub enum CompatError {
     #[error("Error handing read_id column: {0}")]
     MinknowUuid(PolarsError),
 
-    #[error("Error handing minknow.vbz column: {0}")]
+    #[error("Error handing signal column: {0}")]
     MinknowVbz(PolarsError),
 
     #[error("Error converting field {0}, {1}")]
@@ -375,9 +376,15 @@ pub(crate) fn record_batch_to_compat(
     for ((name, field), array) in schema.iter().zip(chunks.into_iter()) {
         log::debug!("record_btach_to_compat, field {field:?}");
         let farr = match (name.as_str(), &field.dtype) {
-            ("minknow.vbz", _) => {
-                minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?
+            // Signal in the ReadTable (largelist(u64))
+            ("signal", ArrowDataType::LargeList(x))
+                if matches!(x.dtype(), ArrowDataType::UInt64) =>
+            {
+                todo!()
+                // minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?
             }
+            // Signal in the SignalTable (list[i16] or largebinary)
+            ("signal", _) => minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?,
             ("read_id", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
                 .map_err(CompatError::MinknowUuid)?,
             (name, ArrowDataType::Utf8View) => utf8view_to_utf8(field, vec![array])
@@ -599,7 +606,7 @@ mod test {
     // fn test_series_to_array_minknow_vbz() {
     //     init();
     //     let example = Some(b"test" as &[u8]);
-    //     let series = Series::new("minknow.vbz".into(), [example]);
+    //     let series = Series::new("signal".into(), [example]);
     //     let farr = series_to_array(series);
     // }
 
@@ -615,7 +622,7 @@ mod test {
     // fn test_writer() {
     //     init();
     //     let example = Some(b"test" as &[u8]);
-    //     let series = Series::new("minknow.vbz".into(), [example]);
+    //     let series = Series::new("signal".into(), [example]);
     //     let farr = vec![series_to_array(series)];
     //     let schema = Arc::new(field_arrs_to_schema(&farr));
     //     let chunk = field_arrs_to_record_batch(farr, schema.clone());
@@ -644,7 +651,7 @@ mod test {
     //     let df = SignalDataFrame(df!("read_id" =>
     // ["67e55044-10b1-426f-9247-bb680e5fe0c8",
     // "67e55044-10b1-426f-9247-bb680e5fe0c8"],
-    // "minknow.vbz" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32,
+    // "signal" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32,
     // 0.4f32].iter().collect::<Series>()],
     // "samples" => [2u32, 2u32],
     // ).unwrap());     println!("{df:?}");

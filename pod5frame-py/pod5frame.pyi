@@ -47,7 +47,7 @@ class FrameWriter:
     """
     Write signal dataframes to the POD5 file.o
 
-    :param tables: Iterable of signal dataframes, with samples, read_id, and minknow.vbz column
+    :param tables: Iterable of signal dataframes, with samples, read_id, and signal column
     """
 
     def close(): ...

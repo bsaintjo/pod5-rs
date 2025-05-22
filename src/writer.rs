@@ -993,7 +993,7 @@ mod test {
         let samples = [2u32, 2u32];
         let df = df!(
             "read_id" => minknow_uuid,
-            "minknow.vbz" => minknow_vbz,
+            "signal" => minknow_vbz,
             "samples" => samples,
         )
         .unwrap();

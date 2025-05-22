@@ -23,9 +23,9 @@ def test_signal_iter():
         for sdf in reader.signal():
             aggregated = (
                 sdf.group_by("read_id")
-                .agg(pl.col("minknow.vbz").explode(), pl.col("samples").sum())
-                .with_columns(idx=pl.int_ranges(pl.col("minknow.vbz").list.len()))
-                .explode("minknow.vbz", "idx")
+                .agg(pl.col("signal").explode(), pl.col("samples").sum())
+                .with_columns(idx=pl.int_ranges(pl.col("signal").list.len()))
+                .explode("signal", "idx")
             )
             print(aggregated)
 

@@ -104,9 +104,9 @@ impl SignalDataFrame {
             .0
             .lazy()
             .with_column(
-                pl::as_struct(vec![pl::col("samples"), pl::col("minknow.vbz")])
+                pl::as_struct(vec![pl::col("samples"), pl::col("signal")])
                     .map(decompress_signal_series, GetOutput::default())
-                    .alias("minknow.vbz"),
+                    .alias("signal"),
             )
             .collect()
             .map(Self)?;
@@ -124,7 +124,7 @@ impl SignalDataFrame {
             .collect::<Vec<_>>();
         let offsets = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.offset)));
         let scale = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.scale)));
-        let res = (&self.0["minknow.vbz"] + &offsets).unwrap();
+        let res = (&self.0["signal"] + &offsets).unwrap();
         let res = (res * scale).unwrap();
         self.0.with_column(res).unwrap();
         self
@@ -141,7 +141,7 @@ impl SignalDataFrame {
             .collect::<Vec<_>>();
         let offsets = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.offset)));
         let scale = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.scale)));
-        let res = (&self.0["minknow.vbz"] / &scale).unwrap();
+        let res = (&self.0["signal"] / &scale).unwrap();
         let res = (res - offsets)
             .unwrap()
             .cast(&pl::DataType::List(Box::new(pl::DataType::Int16)))

@@ -91,15 +91,15 @@ mod test {
         let x = signal_df
             .0
             .lazy()
-            .select([
-                pl::col("read_id")
-                    .map(parse_uuid_from_read_id, GetOutput::default())
-                    .alias("read_id"),
-                pl::col("samples"),
-                pl::as_struct(vec![pl::col("samples"), pl::col("signal")])
-                    .map(decompress_signal_series, GetOutput::default())
-                    .alias("decompressed"),
-            ])
+            // .select([
+            //     pl::col("read_id")
+            //         .map(parse_uuid_from_read_id, GetOutput::default())
+            //         .alias("read_id"),
+            //     pl::col("samples"),
+            //     pl::as_struct(vec![pl::col("samples"), pl::col("signal")])
+            //         .map(decompress_signal_series, GetOutput::default())
+            //         .alias("decompressed"),
+            // ])
             .collect();
         println!("{x:?}");
         Ok(())

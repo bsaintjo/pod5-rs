@@ -46,7 +46,7 @@ import pod5frame as p5f
 with p5f.FrameReader("example.pod5") as reader:
     for signal_df in reader.signal():
         aggregated = signal_df.group_by("read_id").agg(
-            pl.col("minknow.vbz").explode(), pl.col("samples").sum()
+            pl.col("signal").explode(), pl.col("samples").sum()
         )
         print(aggregated)
 ```
@@ -55,7 +55,7 @@ Output
 
 ```text
 ┌─────────────────────────────────┬───────────────────┬─────────┐
-│ read_id                    ┆ minknow.vbz       ┆ samples │
+│ read_id                    ┆ signal       ┆ samples │
 │ ---                             ┆ ---               ┆ ---     │
 │ str                             ┆ list[i16]         ┆ u32     │
 ╞═════════════════════════════════╪═══════════════════╪═════════╡
