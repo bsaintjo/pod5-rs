@@ -10,7 +10,8 @@ use polars_arrow::{
     array::{
         Array, BinaryArray, BinaryViewArray, FixedSizeBinaryArray, Float32Array, Int16Array,
         ListArray, MapArray, MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray,
-        MutableUtf8Array, StructArray, Utf8Array, Utf8ViewArray,
+        MutableListArray, MutablePrimitiveArray, MutableUtf8Array, PrimitiveArray, StructArray,
+        TryPush, Utf8Array, Utf8ViewArray,
     },
     datatypes::{ArrowSchemaRef, ExtensionType},
     offset::OffsetsBuffer,
@@ -73,11 +74,8 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
         ArrowDataType::Extension(bet)
             if bet.inner.to_logical_type() == &ArrowDataType::LargeBinary =>
         {
-            let field = pl::ArrowField::new(
-                PlSmallStr::from("signal"),
-                ArrowDataType::LargeBinary,
-                true,
-            );
+            let field =
+                pl::ArrowField::new(PlSmallStr::from("signal"), ArrowDataType::LargeBinary, true);
             let (_, offsets, values, bitmap) = arr
                 .as_any()
                 .downcast_ref::<LargeBinaryArray>()
@@ -319,7 +317,7 @@ fn minknow_uuid_to_fixed_size_binary(
             }
         };
     });
-    let acc = <FixedSizeBinaryArray as From<MutableFixedSizeBinaryArray>>::from(acc).boxed();
+    let acc = <FixedSizeBinaryArray as From<_>>::from(acc).boxed();
     log::debug!("new read_id {acc:?}");
     Ok(FieldArray::new(new_field, acc))
 }
@@ -358,10 +356,40 @@ pub enum CompatError {
 
     #[error("Error converting field {0}, {1}")]
     GeneralConversionError(String, PolarsError),
+
+    #[error("Error converting Large List to List, field {0}")]
+    LargeToSmallList(String),
 }
 
 pub(crate) fn convert_by(arr: Box<dyn Array>, dt: ArrowDataType) -> Box<dyn Array> {
     todo!()
+}
+
+pub(crate) fn large_list_to_small_list(
+    field: &ArrowField,
+    arr: Box<dyn Array>,
+) -> Result<FieldArray, polars::error::PolarsError> {
+    let new_dt = ListArray::<i32>::default_datatype(ArrowDataType::UInt64);
+    let new_field = ArrowField::new(field.name.clone(), new_dt.clone(), true);
+    let mut acc = MutableListArray::<i32, MutablePrimitiveArray<u64>>::new();
+    arr.as_any()
+        .downcast_ref::<ListArray<i64>>()
+        .unwrap()
+        .iter()
+        .for_each(|s| {
+            let s = s.map(|inner| {
+                inner
+                    .as_any()
+                    .downcast_ref::<PrimitiveArray<u64>>()
+                    .unwrap()
+                    .clone()
+            });
+            let s: Option<Vec<Option<u64>>> =
+                s.map(|inner| inner.iter().map(|opt| opt.cloned()).collect());
+            acc.try_push(s).unwrap();
+        });
+    let acc = <ListArray<i32> as From<_>>::from(acc);
+    Ok(FieldArray::new(new_field, acc.boxed()))
 }
 
 pub(crate) fn record_batch_to_compat(
@@ -376,15 +404,19 @@ pub(crate) fn record_batch_to_compat(
     for ((name, field), array) in schema.iter().zip(chunks.into_iter()) {
         log::debug!("record_btach_to_compat, field {field:?}");
         let farr = match (name.as_str(), &field.dtype) {
-            // Signal in the ReadTable (largelist(u64))
+            // Signal in the ReadTable (list(u64))
             ("signal", ArrowDataType::LargeList(x))
                 if matches!(x.dtype(), ArrowDataType::UInt64) =>
             {
-                todo!()
-                // minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?
+                large_list_to_small_list(field, array)
+                    .map_err(|_| CompatError::LargeToSmallList(name.to_string()))?
+                // minknow_vbz_to_large_binary(field,
+                // vec![array]).map_err(CompatError::MinknowVbz)?
             }
             // Signal in the SignalTable (list[i16] or largebinary)
-            ("signal", _) => minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?,
+            ("signal", _) => {
+                minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?
+            }
             ("read_id", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
                 .map_err(CompatError::MinknowUuid)?,
             (name, ArrowDataType::Utf8View) => utf8view_to_utf8(field, vec![array])
