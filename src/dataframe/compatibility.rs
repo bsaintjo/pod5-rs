@@ -8,12 +8,12 @@ use polars::{
 };
 use polars_arrow::{
     array::{
-        Array, BinaryArray, BinaryViewArray, FixedSizeBinaryArray, Float32Array, Int16Array,
-        ListArray, MapArray, MutableArray, MutableBinaryArray, MutableFixedSizeBinaryArray,
-        MutableListArray, MutablePrimitiveArray, MutableUtf8Array, PrimitiveArray, StructArray,
-        TryPush, Utf8Array, Utf8ViewArray,
+        Array, BinaryArray, BinaryViewArray, DictionaryArray, FixedSizeBinaryArray, Float32Array,
+        Int16Array, ListArray, MapArray, MutableArray, MutableBinaryArray,
+        MutableFixedSizeBinaryArray, MutableListArray, MutablePrimitiveArray, MutableUtf8Array,
+        PrimitiveArray, StructArray, TryPush, Utf8Array, Utf8ViewArray,
     },
-    datatypes::{ArrowSchemaRef, ExtensionType},
+    datatypes::{ArrowSchemaRef, ExtensionType, IntegerType},
     offset::OffsetsBuffer,
     record_batch::RecordBatchT,
 };
@@ -419,6 +419,7 @@ pub(crate) fn record_batch_to_compat(
             }
             ("read_id", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
                 .map_err(CompatError::MinknowUuid)?,
+            (name, ArrowDataType::Dictionary(..)) => convert_dict_types(field, array)?,
             (name, ArrowDataType::Utf8View) => utf8view_to_utf8(field, vec![array])
                 .map_err(|e| CompatError::GeneralConversionError(name.to_string(), e))?,
             (name @ ("context_tags" | "tracking_id"), _) => {
@@ -456,6 +457,27 @@ fn convert_map_struct_arr(struct_arr: StructArray) -> StructArray {
 
     let new_dt = ArrowDataType::Struct(fields);
     StructArray::new(new_dt, length, data, validity)
+}
+
+fn convert_dict_types(field: &ArrowField, arr: Box<dyn Array>) -> Result<FieldArray, CompatError> {
+    let new_dt =
+        ArrowDataType::Dictionary(IntegerType::Int16, Box::new(ArrowDataType::Utf8), false);
+    let new_field = ArrowField::new(field.name.clone(), new_dt.clone(), true);
+    let dict = arr.as_any().downcast_ref::<DictionaryArray<u32>>().unwrap();
+    let keys = dict.keys().iter().map(|x| x.map(|inner| *inner as i16));
+    let keys = PrimitiveArray::from_trusted_len_iter(keys);
+    let values = dict
+        .values()
+        .as_any()
+        .downcast_ref::<Utf8ViewArray>()
+        .unwrap()
+        .into_iter();
+    let values = Utf8Array::<i32>::from_iter(values);
+    let new_dict = DictionaryArray::try_new(new_dt, keys, values.boxed()).unwrap();
+    Ok(FieldArray {
+        field: new_field,
+        arr: new_dict.boxed(),
+    })
 }
 
 fn context_tags_to_map(
