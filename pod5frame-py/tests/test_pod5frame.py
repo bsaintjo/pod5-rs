@@ -5,17 +5,13 @@ import polars as pl
 
 def test_read_fail() -> None:
     with pytest.raises(Exception):
-        p5f.FrameReader("NOTAREALFILE").read()
+        _ = p5f.FrameReader("NOTAREALFILE").reads()
 
 
 def test_no_read_fail() -> None:
     with pytest.raises(Exception):
         reader = p5f.FrameReader(path="../extra/multi_fast5_zip_v3.pod5")
         _ = reader.signal()
-
-
-def test_test():
-    assert p5f.sum_as_string(1, 2) == "3"
 
 
 def test_signal_iter():
@@ -30,9 +26,9 @@ def test_signal_iter():
             print(aggregated)
 
 
-def test_writer():
+def test_writer(tmp_path):
     with pytest.raises(Exception):
-        with p5f.FrameWriter("test.pod5") as writer:
+        with p5f.FrameWriter(tmp_path / "test.pod5") as writer:
             writer.write(p5f.TableType())
             writer.write(p5f.TableType())
 

@@ -2,6 +2,7 @@ from typing import Iterable
 
 from polars import DataFrame
 
+
 class FrameReader:
     """
     A class representing a reader over a POD5 file.
@@ -36,6 +37,11 @@ class FrameReader:
     def close(self): ...
     """Close the file, subsequent read method calls will fail."""
 
+    def __enter__(self): ...
+    def __exit__(self): ...
+
+
+
 class FrameWriter:
     """
     A class for writing dataframes to POD5 files
@@ -43,14 +49,14 @@ class FrameWriter:
     :param path: File path to POD5 file
     """
     def __init__(self, path: str) -> None: ...
-    def write_signal_tables(tables: Iterable[DataFrame]): ...
+    def write_signal_tables(self, tables: Iterable[DataFrame]): ...
     """
     Write signal dataframes to the POD5 file.o
 
     :param tables: Iterable of signal dataframes, with samples, read_id, and signal column
     """
 
-    def close(): ...
+    def close(self): ...
     """
     Close the writer. Any subsequent write method calls will fail
     """
