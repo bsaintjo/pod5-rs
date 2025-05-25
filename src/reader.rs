@@ -1,10 +1,10 @@
 //! Reading from a POD5 file.
 use std::io::{Read, Seek, SeekFrom};
 
+use pod5_footer::ParsedFooter;
 use crate::{
     dataframe::{ReadDataFrameIter, RunInfoDataFrameIter, SignalDataFrameIter},
     error::Pod5Error,
-    footer::ParsedFooter,
 };
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];

@@ -9,7 +9,8 @@ use arrow::{
     datatypes::{GenericBinaryType, UInt32Type, UInt64Type},
     ipc::reader::FileReader,
 };
-use pod5::{footer::ParsedFooter, svb16};
+use pod5::svb16;
+use pod5_footer::ParsedFooter;
 
 fn get_reads_info(buf: &[u8]) -> eyre::Result<Vec<Arc<dyn Array>>> {
     let cursor = Cursor::new(buf);
@@ -37,7 +38,7 @@ fn main() -> eyre::Result<()> {
     println!("footer: {:?}", parsed.footer());
 
     let rt = parsed.read_table()?;
-    let mut read_buf = vec![0u8; rt.as_ref().length()];
+    let mut read_buf = vec![0u8; rt.as_ref().length().try_into().unwrap()];
     file.seek(SeekFrom::Start(rt.as_ref().offset() as u64))?;
     file.read_exact(&mut read_buf)?;
     // Read data is split across multiple "rows", so pull out the index

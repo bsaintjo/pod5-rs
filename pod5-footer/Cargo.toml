@@ -6,3 +6,8 @@ authors.workspace = true
 
 [dependencies]
 flatbuffers = "24.3.25"
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+eyre.workspace = true

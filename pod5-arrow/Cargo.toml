@@ -6,6 +6,7 @@ authors.workspace = true
 
 [dependencies]
 pod5 = { path = ".." }
+pod5-footer = { path = "../pod5-footer"}
 arrow = "54.2.0"
 thiserror.workspace = true
 uuid.workspace = true

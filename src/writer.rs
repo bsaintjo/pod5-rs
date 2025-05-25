@@ -8,6 +8,9 @@ use std::{
     sync::Arc,
 };
 
+use pod5_footer::{
+    footer_generated::minknow::reads_format::ContentType, TableInfo, FOOTER_MAGIC
+};
 use polars::{
     error::PolarsError,
     frame::DataFrame,
@@ -18,18 +21,14 @@ use polars_schema::Schema;
 use uuid::Uuid;
 
 use crate::{
-    dataframe::{
-        compatibility::record_batch_to_compat, ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
-    },
-    footer::footer_generated::minknow::reads_format::{
-        ContentType, EmbeddedFile, EmbeddedFileArgs, Footer, FooterArgs,
-    },
     FILE_SIGNATURE,
+    dataframe::{
+        ReadDataFrame, RunInfoDataFrame, SignalDataFrame, compatibility::record_batch_to_compat,
+    },
 };
 
 const SOFTWARE: &str = "pod5-rs";
 const POD5_VERSION: &str = "0.0.40";
-const FOOTER_MAGIC: [u8; 8] = [b'F', b'O', b'O', b'T', b'E', b'R', 0x000, 0x000];
 
 #[derive(Debug, thiserror::Error)]
 pub enum WriteError {
@@ -120,11 +119,11 @@ impl IntoTable for RunInfoDataFrame {
     }
 }
 
-struct TableInfo {
-    offset: i64,
-    length: i64,
-    content_type: ContentType,
-}
+// struct TableInfo {
+//     offset: i64,
+//     length: i64,
+//     content_type: ContentType,
+// }
 
 #[derive(Debug, Clone)]
 struct WriteOptions {
@@ -216,11 +215,8 @@ impl<W: Write + Seek> Writer<W> {
         self.write_section_marker().unwrap();
         let offset = self.position as i64;
         let length = new_position as i64 - self.position as i64;
-        self.tables.push(TableInfo {
-            offset,
-            length,
-            content_type,
-        });
+        self.tables
+            .push(TableInfo::new(offset, length, content_type));
         self.position = self.writer.stream_position().unwrap();
         Ok(())
     }
@@ -335,36 +331,12 @@ impl<W: Write + Seek> Writer<W> {
     }
 
     fn build_footer(&self) -> Vec<u8> {
-        let mut builder = flatbuffers::FlatBufferBuilder::new();
-        let mut tables = Vec::with_capacity(self.tables.len());
-        for table in &self.tables {
-            let efile_args = EmbeddedFileArgs {
-                offset: table.offset,
-                length: table.length,
-                content_type: table.content_type,
-                ..Default::default()
-            };
-            let efile = EmbeddedFile::create(&mut builder, &efile_args);
-            tables.push(efile);
-        }
-        let contents = Some(builder.create_vector(&tables));
-
-        let file_identifier = Some(builder.create_string(&self.file_identifier.to_string()));
-        let software = Some(builder.create_string(SOFTWARE));
-        let pod5_version = Some(builder.create_string(POD5_VERSION));
-
-        let fbtable = Footer::create(
-            &mut builder,
-            &FooterArgs {
-                file_identifier,
-                software,
-                pod5_version,
-                contents,
-            },
-        );
-
-        builder.finish_minimal(fbtable);
-        builder.finished_data().to_vec()
+        pod5_footer::FooterBuilder::new(
+            self.file_identifier.to_string(),
+            SOFTWARE.to_string(),
+            POD5_VERSION.to_string(),
+        )
+        .build_footer(&self.tables)
     }
 }
 
@@ -524,7 +496,7 @@ mod test {
         prelude::{CategoricalChunkedBuilder, CategoricalOrdering, CompatLevel},
         series::{IntoSeries, Series},
     };
-    use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
+    use polars_arrow::io::ipc::read::{FileReader, read_file_metadata};
 
     use super::*;
     use crate::{

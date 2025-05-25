@@ -5,6 +5,7 @@ members = [
     "examples/find-all-reads",
     "examples/pod5-cp",
     "pod5-arrow",
+    "pod5-footer",
     "pod5frame-py",
 ]
 
@@ -41,6 +42,7 @@ log = "0.4.25"
 eyre = "0.6.8"
 
 [dependencies]
+pod5-footer = { path = "pod5-footer"}
 thiserror.workspace = true
 
 # Parsing read ids
@@ -72,8 +74,6 @@ polars-arrow = { version = "0.48.1", features = ["io_ipc"] }
 polars-schema = "0.48.1"
 
 lru = "0.13.0"
-
-[workspace.dev-dependencies]
 
 [dev-dependencies]
 eyre.workspace = true

@@ -7,5 +7,6 @@ authors.workspace = true
 [dependencies]
 arrow = "53.3.0"
 eyre = "0.6.12"
-pod5 = { path = "../..", version = "0.1"}
+pod5 = { path = "../..", version = "0.1" }
+pod5-footer = { path = "../../pod5-footer" }
 uuid = "1.11.0"

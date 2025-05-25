@@ -1,16 +1,27 @@
 use std::io::{self, Read, Seek, SeekFrom};
 
-use flatbuffers::root;
+use flatbuffers::{InvalidFlatbuffer, root};
+use footer_generated::minknow::reads_format::{EmbeddedFile, EmbeddedFileArgs, FooterArgs};
+use uuid::Uuid;
 
 use crate::footer_generated::minknow::reads_format::{ContentType, Footer};
 
 pub mod footer_generated;
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
+pub const FOOTER_MAGIC: [u8; 8] = [b'F', b'O', b'O', b'T', b'E', b'R', 0x000, 0x000];
 
 #[derive(thiserror::Error, Debug)]
 pub enum FooterError {
-    #[error("Missing list of embedded files from footer, footer is likely improperly constructed or pod5 is empty")]
+    #[error("FlatBuffers error: {0}")]
+    FlatBuffersError(#[from] InvalidFlatbuffer),
+
+    #[error("Footer IO Error: {0}")]
+    FooterIOError(#[from] std::io::Error),
+
+    #[error(
+        "Missing list of embedded files from footer, footer is likely improperly constructed or pod5 is empty"
+    )]
     ContentsMissing,
 
     #[error("Missing Signal table from POD5")]
@@ -24,34 +35,39 @@ pub enum FooterError {
 }
 
 #[derive(Debug)]
-pub struct Table {
-    offset: usize,
-    length: usize,
+pub struct TableInfo {
+    offset: i64,
+    length: i64,
+    content_type: ContentType,
 }
 
-impl Table {
-    pub fn offset(&self) -> usize {
+impl TableInfo {
+    pub fn new(offset: i64, length: i64, content_type: ContentType) -> Self {
+        Self { offset, length, content_type }
+    }
+    
+    pub fn offset(&self) -> i64 {
         self.offset
     }
 
-    pub fn length(&self) -> usize {
+    pub fn length(&self) -> i64 {
         self.length
     }
 }
 
 #[derive(Debug)]
-pub struct RunInfoTable(Table);
+pub struct RunInfoTable(TableInfo);
 
 impl RunInfoTable {
-    pub fn as_ref(&self) -> &Table {
+    pub fn as_ref(&self) -> &TableInfo {
         &self.0
     }
 }
 
 #[derive(Debug)]
-pub struct ReadTable(Table);
+pub struct ReadTable(TableInfo);
 impl ReadTable {
-    pub fn as_ref(&self) -> &Table {
+    pub fn as_ref(&self) -> &TableInfo {
         &self.0
     }
 
@@ -70,7 +86,7 @@ impl ReadTable {
 }
 
 #[derive(Debug)]
-pub struct SignalTable(Table);
+pub struct SignalTable(TableInfo);
 
 impl SignalTable {
     pub fn read_to_buf<R: Read + Seek>(
@@ -87,8 +103,8 @@ impl SignalTable {
     }
 }
 
-impl AsRef<Table> for SignalTable {
-    fn as_ref(&self) -> &Table {
+impl AsRef<TableInfo> for SignalTable {
+    fn as_ref(&self) -> &TableInfo {
         &self.0
     }
 }
@@ -102,7 +118,11 @@ impl ParsedFooter {
         Ok(root::<Footer>(&self.data)?)
     }
 
-    fn find_table(&self, content_type: ContentType, err: FooterError) -> Result<Table, FooterError> {
+    fn find_table(
+        &self,
+        content_type: ContentType,
+        err: FooterError,
+    ) -> Result<TableInfo, FooterError> {
         let footer = self.footer()?;
         let contents = footer.contents().ok_or(FooterError::ContentsMissing)?;
         let mut efile = None;
@@ -114,9 +134,10 @@ impl ParsedFooter {
         }
         let efile = efile.ok_or(err)?;
 
-        Ok(Table {
-            offset: efile.offset() as usize,
-            length: efile.length() as usize,
+        Ok(TableInfo {
+            offset: efile.offset(),
+            length: efile.length(),
+            content_type: content_type,
         })
     }
 
@@ -134,7 +155,7 @@ impl ParsedFooter {
         )?))
     }
 
-    pub(crate) fn run_info_table(&self) -> Result<RunInfoTable, FooterError> {
+    pub fn run_info_table(&self) -> Result<RunInfoTable, FooterError> {
         Ok(RunInfoTable(self.find_table(
             ContentType::RunInfoTable,
             FooterError::RunInfoTableMissing,
@@ -156,7 +177,55 @@ impl ParsedFooter {
         reader.read_exact(&mut buf)?;
         Ok(Self { data: buf })
     }
+}
 
+pub struct FooterBuilder {
+    file_identifier: String,
+    software: String,
+    version: String,
+}
+
+impl FooterBuilder {
+    pub fn new(file_identifier: String, software: String, version: String) -> Self {
+        Self {
+            file_identifier,
+            software,
+            version,
+        }
+    }
+
+    pub fn build_footer(&self, tables: &[TableInfo]) -> Vec<u8> {
+        let mut builder = flatbuffers::FlatBufferBuilder::new();
+        let mut etables = Vec::with_capacity(tables.len());
+        for table in tables {
+            let efile_args = EmbeddedFileArgs {
+                offset: table.offset as i64,
+                length: table.length as i64,
+                content_type: table.content_type,
+                ..Default::default()
+            };
+            let efile = EmbeddedFile::create(&mut builder, &efile_args);
+            etables.push(efile);
+        }
+        let contents = Some(builder.create_vector(&etables));
+
+        let file_identifier = Some(builder.create_string(&self.file_identifier));
+        let software = Some(builder.create_string(&self.software));
+        let pod5_version = Some(builder.create_string(&self.version));
+
+        let fbtable = Footer::create(
+            &mut builder,
+            &FooterArgs {
+                file_identifier,
+                software,
+                pod5_version,
+                contents,
+            },
+        );
+
+        builder.finish_minimal(fbtable);
+        builder.finished_data().to_vec()
+    }
 }
 
 #[cfg(test)]

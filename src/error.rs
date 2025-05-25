@@ -6,6 +6,9 @@ use polars::error::PolarsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Pod5Error {
+    #[error("Footer Error: {0}")]
+    FooterError(#[from] pod5_footer::FooterError),
+
     /// Reason why flatbuffers failed to parse the footer
     #[error("Failed to parse footer, {0}")]
     FooterParserFailure(#[from] InvalidFlatbuffer),
