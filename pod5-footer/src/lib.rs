@@ -2,7 +2,6 @@ use std::io::{self, Read, Seek, SeekFrom};
 
 use flatbuffers::{InvalidFlatbuffer, root};
 use footer_generated::minknow::reads_format::{EmbeddedFile, EmbeddedFileArgs, FooterArgs};
-use uuid::Uuid;
 
 use crate::footer_generated::minknow::reads_format::{ContentType, Footer};
 
