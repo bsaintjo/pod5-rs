@@ -91,27 +91,10 @@ pub trait IntoTable {
     fn content_type() -> TableContent;
 }
 
-// impl<T> IntoTable for &T
-// where
-//     T: IntoTable,
-// {
-//     fn into_record_batch(self) -> Result<TableBatch, PolarsError> {
-//         todo!()
-//     }
-
-//     fn as_dataframe(&self) -> &DataFrame {
-//         todo!()
-//     }
-// }
-
 impl IntoTable for SignalDataFrame {
     fn as_dataframe(&self) -> &DataFrame {
         &self.0
     }
-
-    // fn into_record_batch(self) -> TableBatch{
-    //     _into_record_batch(&self.0)
-    // }
 
     fn content_type() -> TableContent {
         TableContent::Signal
@@ -123,10 +106,6 @@ impl IntoTable for ReadDataFrame {
         &self.0
     }
 
-    // fn into_record_batch(self) -> TableBatch {
-    //     _into_record_batch(&self.0)
-    // }
-
     fn content_type() -> TableContent {
         TableContent::Read
     }
@@ -136,27 +115,11 @@ impl IntoTable for RunInfoDataFrame {
         &self.0
     }
 
-    // fn into_record_batch(self) -> TableBatch {
-    //     _into_record_batch(&self.0)
-    // }
-
     fn content_type() -> TableContent {
         TableContent::RunInfo
     }
 }
 
-// fn _into_record_batch(df: &polars::prelude::DataFrame) -> TableBatch {
-//     let field_arrays = df
-//         .iter()
-//         .map(|s| series_to_array(s.clone()))
-//         .collect::<Vec<_>>();
-//     let schema = Arc::new(field_arrs_to_schema(&field_arrays));
-//     let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
-//     TableBatch {
-//         batch: chunk,
-//         schema,
-//     }
-// }
 struct TableInfo {
     offset: i64,
     length: i64,
@@ -242,68 +205,6 @@ impl<W: Write + Seek> Writer<W> {
         Ok(())
     }
 
-    // pub fn write_tables_with<F, T>(&mut self, inserter: F) -> Result<(),
-    // WriteError> where
-    //     F: FnMut(&mut TableWriteGuard<W, T>) -> Result<(), WriteError>,
-    //     T: IntoTable,
-    // {
-    //     self._write_tables_with(inserter)?;
-    //     // let new_content = T::content_type();
-    //     // if new_content != ContentType::OtherIndex &&
-    //     // self.contents_writtens.contains(&new_content) {     return
-    //     // Err(WriteError::ContentTypeAlreadyWritten(new_content)); }
-    //     // inserter(&mut TableWriteGuard::new(self))?;
-    //     self.end_table(T::content_type())?;
-    //     Ok(())
-    // }
-
-    // fn _write_tables_with<F, T>(&mut self, mut inserter: F) -> Result<(),
-    // WriteError> where
-    //     F: FnMut(&mut TableWriteGuard<W, T>) -> Result<(), WriteError>,
-    //     T: IntoTable,
-    // {
-    //     let new_content = T::content_type();
-    //     if new_content != ContentType::OtherIndex &&
-    // self.contents_writtens.contains(&new_content) {         return
-    // Err(WriteError::ContentTypeAlreadyWritten(new_content));     }
-    //     let mut guard = self.write_guard();
-    //     // inserter(&mut TableWriteGuard::new(self))?;
-    //     inserter(&mut guard)?;
-    //     guard.finish()?;
-    //     Ok(())
-    // }
-
-    // fn write_guard<T: IntoTable>(&mut self) -> TableWriteGuard<'_, W, T> {
-    //     TableWriteGuard::new(self)
-    // }
-
-    /// Write a single table to the POD5 file. The writer is updated with
-    ///
-    /// This is a convienence function for writing a single table to the file.
-    /// If you need to write multiple tables, use the `write_tables_with`
-    /// method.
-    ///
-    /// Similar to writing with the `write_tables_with` method, this will return
-    /// an error if the content type is not `OtherIndex` and the content
-    /// type has already been written.
-
-    // pub fn write_table<D: IntoTable>(&mut self, df: &D) -> Result<(), WriteError>
-    // {     self.write_tables_with(|guard| guard.write_table(df))
-    // }
-
-    // pub fn write_table_iter<'a, I, D>(&mut self, mut iter: I) -> Result<(),
-    // WriteError> where
-    //     I: Iterator<Item = &'a D>,
-    //     D: IntoTable + 'a,
-    // {
-    //     self.write_tables_with(|guard| {
-    //         for df in iter.by_ref() {
-    //             guard.write_table(&df)?;
-    //         }
-    //         Ok(())
-    //     })
-    // }
-
     fn end_table(&mut self, content_type: ContentType) -> Result<(), WriteError> {
         let new_position = self
             .writer
@@ -351,14 +252,6 @@ impl<W: Write + Seek> Writer<W> {
         self.writer
             .write_all(&footer)
             .map_err(WriteError::FailedToWriteFooter)?;
-
-        // let position = self
-        //     .writer
-        //     .stream_position()
-        //     .map_err(WriteError::StreamPositionError)?;
-        // // Padding the footer to 8-byte boundary
-        // let padding = 8 - (position % 8);
-        // self.write_all(&vec![0u8; padding as usize]).unwrap();
 
         let footer_len_bytes = (footer.len() as i64).to_le_bytes();
         self.writer
@@ -612,12 +505,6 @@ where
         Ok(())
     }
 
-    // fn finish(mut self) -> Result<(), WriteError> {
-    //     if let Some(TableWriter::PostInit(mut x)) = self.inner.take() {
-    //         x.finish()?;
-    //     }
-    //     Ok(())
-    // }
     pub fn finish2(mut self) -> Result<(), WriteError> {
         if let Some(TableWriter::PostInit(mut x)) = self.inner.take() {
             x.finish()?;
@@ -627,21 +514,6 @@ where
         Ok(())
     }
 }
-
-// impl<W, T> Drop for TableWriteGuard<'_, W, T>
-// where
-//     W: Write + Seek,
-//     T: IntoTable,
-// {
-//     fn drop(&mut self) {
-//         if let Some(TableWriter::PostInit(mut x)) = self.inner.take() {
-//             x.finish().unwrap();
-//         } else {
-//             // writer is always Some
-//             unreachable!()
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod test {
@@ -659,52 +531,6 @@ mod test {
         dataframe::{compatibility::record_batch_to_compat, get_next_df},
         reader::Reader,
     };
-
-    // #[test]
-    // fn test_writer_dict_roundtrip() {
-    //     let mut dict_column =
-    //         CategoricalChunkedBuilder::new("test".into(), 3,
-    // CategoricalOrdering::Physical);     dict_column.append_value("alpha");
-    //     dict_column.append_value("beta");
-    //     dict_column.append_null();
-    //     dict_column.register_value("gamma");
-    //     let dict_column = dict_column.finish();
-    //     let dict_column = dict_column.into_series().into_frame();
-    //     let schema = dict_column
-    //         .iter_chunks(CompatLevel::newest(), false)
-    //         .next()
-    //         .unwrap()
-    //         .schema()
-    //         .clone();
-    //     let fields = schema.iter().map(|x| x.1).cloned().collect::<Vec<_>>();
-    //     let buf = Cursor::new(Vec::new());
-    //     let mut writer = Writer::new(buf);
-    //     writer.init().unwrap();
-    //     let fst = writer.writer.stream_position().unwrap();
-    //     writer
-    //         ._write_tables_with(|guard|
-    // guard.write_table(&SignalDataFrame(dict_column.clone())))
-    //         .unwrap();
-    //     let snd = writer.writer.stream_position().unwrap();
-    //     writer.write_section_marker().unwrap();
-    //     let pos = writer.writer.stream_position().unwrap();
-    //     writer
-    //         ._write_tables_with(|guard|
-    // guard.write_table(&ReadDataFrame(dict_column.clone())))
-    //         .unwrap();
-
-    //     let buf = writer.into_inner().into_inner();
-    //     let new_buf = buf[fst as usize..snd as usize].to_vec();
-    //     let mut buf = Cursor::new(new_buf);
-    //     // let mut buf = writer.into_inner();
-    //     // buf.rewind().unwrap();
-    //     // buf.seek(std::io::SeekFrom::Start(6)).unwrap();
-    //     let metadata = read_file_metadata(&mut buf).unwrap();
-
-    //     let mut reader = FileReader::new(buf, metadata, None, None);
-    //     let _ = reader.next().unwrap().unwrap();
-    //     // let _ = get_next_df(&fields, &mut reader);
-    // }
 
     #[test]
     fn test_dictionary_df_roundtrip2() {
@@ -740,58 +566,6 @@ mod test {
         let _ = get_next_df(&fields, &mut reader);
     }
 
-    // #[test]
-    // fn test_dictionary_df_roundtrip() {
-    //     let mut dict_column =
-    //         CategoricalChunkedBuilder::new("test".into(), 10,
-    // CategoricalOrdering::Physical);     dict_column.append_value("alpha");
-    //     dict_column.append_value("beta");
-    //     dict_column.append_null();
-    //     dict_column.register_value("gamma");
-    //     let dict_column = dict_column.finish().into_series().into_frame();
-    //     let buf = Cursor::new(Vec::new());
-    //     let chunk = _into_record_batch(&dict_column);
-    //     let mut writer =
-    //         FileWriter::try_new(buf, chunk.schema.clone(), None,
-    // Default::default()).unwrap();     writer.write(&chunk.batch,
-    // None).unwrap();     writer.finish().unwrap();
-
-    //     let mut buf = writer.into_inner();
-    //     buf.rewind().unwrap();
-    //     let metadata = read_file_metadata(&mut buf).unwrap();
-
-    //     let mut reader = FileReader::new(buf, metadata, None, None);
-    //     let _ = reader.next().unwrap().unwrap();
-    // }
-
-    // #[test]
-    // fn test_dictionary_roundtrip() {
-    //     let keys = PrimitiveArray::from_iter([0, 1, 2].into_iter().map(Some));
-    //     let values = Utf8Array::<i32>::from([Some("hello"), Some("world"),
-    // Some("thanks")]).boxed();     let dict =
-    // DictionaryArray::try_from_keys(keys, values).unwrap();
-
-    //     let name: PlSmallStr = "test".into();
-    //     let field = ArrowField::new(name.clone(), dict.dtype().clone(), true);
-    //     let mut schema: Schema<_> = Default::default();
-    //     schema.insert(name, field);
-    //     let schema = Arc::new(schema);
-
-    //     let buf = Cursor::new(Vec::new());
-    //     let mut writer =
-    //         FileWriter::try_new(buf, schema.clone(), None,
-    // Default::default()).unwrap();     let chunk = RecordBatch::new(3,
-    // schema.clone(), vec![dict.boxed()]);     writer.write(&chunk,
-    // None).unwrap();     writer.finish().unwrap();
-
-    //     let mut buf = writer.into_inner();
-    //     buf.rewind().unwrap();
-
-    //     let metadata = read_file_metadata(&mut buf).unwrap();
-    //     let mut reader = FileReader::new(buf, metadata, None, None);
-    //     let _ = reader.next().unwrap().unwrap();
-    // }
-
     #[test]
     fn test_signal_table_roundtrip() {
         let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
@@ -807,9 +581,7 @@ mod test {
             .next()
             .unwrap();
         let read_df = record_batch_to_compat(read_df).unwrap();
-        // let chunk = read_df.into_record_batch().unwrap();
         let schema = Arc::new(read_df.schema().clone());
-        // let fields = schema.iter().map(|x| x.1).cloned().collect::<Vec<_>>();
 
         let mut writer = FileWriter::try_new(buf, schema, None, Default::default()).unwrap();
         writer.write(&read_df, None).unwrap();
@@ -819,10 +591,10 @@ mod test {
         let mut buf = writer.into_inner();
         buf.rewind().unwrap();
         let metadata = read_file_metadata(&mut buf).unwrap();
-        // assert_eq!(
-        //     metadata.ipc_schema,
-        //     reads.table_reader.metadata().ipc_schema
-        // );
+        assert_eq!(
+            metadata.ipc_schema,
+            reads.table_reader.metadata().ipc_schema
+        );
 
         let fields = metadata
             .schema
@@ -830,7 +602,6 @@ mod test {
             .map(|x| x.1.clone())
             .collect::<Vec<_>>();
         let mut reader = FileReader::new(buf, metadata, None, None);
-        // let res = reader.next().unwrap().unwrap();
         let res = get_next_df(&fields, &mut reader);
         println!("{res:?}");
     }
@@ -849,7 +620,6 @@ mod test {
             .iter_chunks(CompatLevel::newest(), false)
             .next()
             .unwrap();
-        // let chunk = read_df.into_record_batch().unwrap();
 
         let mut writer = FileWriter::try_new(
             buf,
@@ -1002,7 +772,5 @@ mod test {
         let buf = Cursor::new(Vec::new());
         let mut writer = Writer::from_writer(buf).unwrap();
         writer.with_guard(|g| g.write_batch(&df)).unwrap();
-        // writer.write_table(&df).unwrap();
-        // writer.finish().unwrap();
     }
 }

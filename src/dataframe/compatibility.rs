@@ -13,14 +13,13 @@ use polars_arrow::{
         MutableFixedSizeBinaryArray, MutableListArray, MutablePrimitiveArray, MutableUtf8Array,
         PrimitiveArray, StructArray, TryPush, Utf8Array, Utf8ViewArray,
     },
-    datatypes::{ArrowSchemaRef, ExtensionType, IntegerType},
+    datatypes::{ExtensionType, IntegerType},
     offset::OffsetsBuffer,
     record_batch::RecordBatchT,
 };
 use polars_schema::Schema;
 use uuid::Uuid;
 
-use super::SignalDataFrame;
 use crate::{dataframe::schema::map_field, svb16};
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays
@@ -98,44 +97,6 @@ pub(crate) fn array_to_series(field: &pl::ArrowField, arr: Box<dyn Array>) -> Se
     }
 }
 
-struct Converter<T> {
-    arr: Box<dyn Array>,
-    field: pl::ArrowField,
-    schema: ArrowSchemaRef,
-    _marker: std::marker::PhantomData<T>,
-}
-
-impl Converter<SignalDataFrame> {
-    fn new(arr: Box<dyn Array>, field: pl::ArrowField, schema: ArrowSchemaRef) -> Self {
-        Self {
-            arr,
-            field,
-            schema,
-            _marker: std::marker::PhantomData,
-        }
-    }
-
-    fn convert(self) -> Result<FieldArray, PolarsError> {
-        let mut new_chunks = Vec::with_capacity(self.schema.len());
-
-        match self.field.name.as_str() {
-            "signal" => {
-                let farr = minknow_vbz_to_large_binary(&self.field, vec![self.arr])?;
-                new_chunks.push(farr.arr);
-            }
-            "read_id" => {
-                let farr = minknow_uuid_to_fixed_size_binary(&self.field, vec![self.arr])?;
-                new_chunks.push(farr.arr);
-            }
-            _ => {
-                let farr = FieldArray::new(self.field.clone(), self.arr.clone());
-                new_chunks.push(farr.arr);
-            }
-        }
-        todo!()
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct FieldArray {
     pub(crate) field: pl::ArrowField,
@@ -148,18 +109,6 @@ impl FieldArray {
     }
 }
 
-pub(crate) fn field_arrs_to_schema(farrs: &[FieldArray]) -> Schema<pl::ArrowField> {
-    farrs.iter().map(|farr| farr.field.clone()).collect()
-}
-
-pub(crate) fn field_arrs_to_record_batch(
-    farrs: Vec<FieldArray>,
-    schema: ArrowSchemaRef,
-) -> RecordBatchT<Box<dyn Array>> {
-    let height = farrs[0].arr.len();
-    let arrays = farrs.into_iter().map(|f| f.arr).collect::<Vec<_>>();
-    RecordBatchT::new(height, schema, arrays)
-}
 
 /// Converts a signal array into a LargeBinary array.
 ///
@@ -176,7 +125,6 @@ fn minknow_vbz_to_large_binary(
         metadata: None,
     }));
     let new_field = ArrowField::new(field.name.clone(), new_dt.clone(), true);
-    // let mut acc = MutableBinaryArray::<i64>::new();
     let mut acc: MutableBinaryArray<i64> =
         MutableBinaryArray::try_new(new_dt, Default::default(), Default::default(), None).unwrap();
     chunks.into_iter().for_each(|chunk| {
@@ -322,30 +270,6 @@ fn minknow_uuid_to_fixed_size_binary(
     Ok(FieldArray::new(new_field, acc))
 }
 
-/// Main entrypoint for series conversion. By default it converts the arrays as
-/// is, but for columns that are converted by array_to_series, we need to
-/// convert back to the original type used in POD5 tables.
-// pub(crate) fn series_to_array(series: Series) -> FieldArray {
-//     let name = series.name().clone();
-//     let field = series
-//         .dtype()
-//         .to_arrow_field(name.clone(), CompatLevel::newest());
-//     log::debug!("series_to_array: {field:?}");
-//     let chunks = series.into_chunks();
-//     log::debug!("example chunk: {:?}", &chunks[0]);
-//     match (field.name.as_str(), &field.dtype) {
-//         ("signal", _) => minknow_vbz_to_large_binary(&field, chunks).unwrap(),
-//         ("read_id", _) => minknow_uuid_to_fixed_size_binary(&field, chunks).unwrap(),
-//         _ => {
-//             let chunks = chunks.iter().map(|b| b.as_ref()).collect::<Vec<_>>();
-//             let acc = concatenate::concatenate(&chunks).unwrap();
-//             let farr = FieldArray::new(field, acc);
-//             log::debug!("series_to_array: {farr:?}");
-//             farr
-//         }
-//     }
-// }
-
 #[derive(Debug, thiserror::Error)]
 pub enum CompatError {
     #[error("Error handing read_id column: {0}")]
@@ -359,10 +283,6 @@ pub enum CompatError {
 
     #[error("Error converting Large List to List, field {0}")]
     LargeToSmallList(String),
-}
-
-pub(crate) fn convert_by(arr: Box<dyn Array>, dt: ArrowDataType) -> Box<dyn Array> {
-    todo!()
 }
 
 pub(crate) fn large_list_to_small_list(
@@ -404,26 +324,26 @@ pub(crate) fn record_batch_to_compat(
     for ((name, field), array) in schema.iter().zip(chunks.into_iter()) {
         log::debug!("record_btach_to_compat, field {field:?}");
         let farr = match (name.as_str(), &field.dtype) {
+
             // Signal in the ReadTable (list(u64))
             ("signal", ArrowDataType::LargeList(x))
                 if matches!(x.dtype(), ArrowDataType::UInt64) =>
             {
                 large_list_to_small_list(field, array)
                     .map_err(|_| CompatError::LargeToSmallList(name.to_string()))?
-                // minknow_vbz_to_large_binary(field,
-                // vec![array]).map_err(CompatError::MinknowVbz)?
             }
+
             // Signal in the SignalTable (list[i16] or largebinary)
             ("signal", _) => {
                 minknow_vbz_to_large_binary(field, vec![array]).map_err(CompatError::MinknowVbz)?
             }
             ("read_id", _) => minknow_uuid_to_fixed_size_binary(field, vec![array])
                 .map_err(CompatError::MinknowUuid)?,
-            (name, ArrowDataType::Dictionary(..)) => convert_dict_types(field, array)?,
+            (_, ArrowDataType::Dictionary(..)) => convert_dict_types(field, array)?,
             (name, ArrowDataType::Utf8View) => utf8view_to_utf8(field, vec![array])
                 .map_err(|e| CompatError::GeneralConversionError(name.to_string(), e))?,
             (name @ ("context_tags" | "tracking_id"), _) => {
-                context_tags_to_map(name, field, vec![array])
+                large_list_to_map(name, field, vec![array])
                     .map_err(|e| CompatError::GeneralConversionError(name.to_string(), e))?
             }
             _ => FieldArray::new(field.clone(), array),
@@ -435,7 +355,7 @@ pub(crate) fn record_batch_to_compat(
 }
 
 fn convert_map_struct_arr(struct_arr: StructArray) -> StructArray {
-    let (fields, length, data, validity) = struct_arr.clone().into_data();
+    let (_, length, data, validity) = struct_arr.clone().into_data();
     let data = data
         .into_iter()
         .map(|datum| {
@@ -480,7 +400,7 @@ fn convert_dict_types(field: &ArrowField, arr: Box<dyn Array>) -> Result<FieldAr
     })
 }
 
-fn context_tags_to_map(
+fn large_list_to_map(
     name: &str,
     field: &ArrowField,
     chunks: Vec<Box<dyn Array>>,
@@ -495,9 +415,7 @@ fn context_tags_to_map(
     let offsets = OffsetsBuffer::try_from(list_arr.offsets()).unwrap();
     let validity = list_arr.validity();
     let chunk = list_arr.into_iter().next().unwrap().unwrap();
-    // let mut key = name_field("key", ArrowDataType::Utf8).1;
-    // let value = name_field("value", ArrowDataType::Utf8).1;
-    // key.is_nullable = false;
+
     let fields = vec![
         ArrowField::new("key".into(), ArrowDataType::Utf8, false),
         ArrowField::new("value".into(), ArrowDataType::Utf8, false),
@@ -513,53 +431,17 @@ fn context_tags_to_map(
     );
     let struct_arr = chunk.as_any().downcast_ref::<StructArray>().unwrap();
     let struct_arr = convert_map_struct_arr(struct_arr.clone());
-    // for kv in struct_arr.values() {
-    //     log::debug!("origin arr {:?}", kv);
-    //     let mut utf8_arr: MutableUtf8Array<i32> = MutableUtf8Array::new();
-    //     kv.as_any()
-    //         .downcast_ref::<Utf8ViewArray>()
-    //         .unwrap()
-    //         .iter()
-    //         .for_each(|s| utf8_arr.push(s));
-    //     log::debug!(
-    //         "utf8 arr {:?}",
-    //         <Utf8Array<i32> as From<MutableUtf8Array<i32>>>::from(utf8_arr)
-    //     )
-    //     // log::debug!("k {:?}", kv[0]);
-    //     // log::debug!("kdt {:?}", kv[0].dtype());
-    //     // log::debug!("karr {:?}",
-    //     // kv[0].as_any().downcast_ref::<BinaryViewScalar<str>>().unwrap());
-    //     // log::debug!("v {:?}", kv[1]);
-    //     // log::debug!("vdt {:?}", kv[1].dtype());
-    //     // log::debug!("varr {:?}",
-    //     // kv[1].as_any().downcast_ref::<BinaryViewScalar<str>>().unwrap());
-    // }
-
     log::debug!("field dtype {:?}", chunk.dtype());
     log::debug!("dt {:?}", dt);
     log::debug!("new struct {:?}", struct_arr.dtype());
 
     let map_array = MapArray::new(dt, offsets, struct_arr.boxed(), validity.cloned());
-    // chunks.into_iter().for_each(|chunk| {
-    //     for struct_arr in
-    // chunk.as_any().downcast_ref::<ListArray<i64>>().unwrap() {         let
-    // struct_arr = struct_arr.unwrap();         let struct_arr =
-    // struct_arr.as_any().downcast_ref::<StructArray>().unwrap();         for
-    // pair in struct_arr.iter() {             if pair.is_some() {
-    //                 offset += 1;
-    //             }
-    //             offsets.push(offset);
-    //         }
-    //         log::debug!("{struct_arr:?}");
-    //     }
-    //     todo!()
-    // });
-    // panic!();
     Ok(FieldArray {
         field: new_field,
         arr: map_array.to_boxed(),
     })
 }
+
 
 fn utf8view_to_utf8(
     field: &ArrowField,
@@ -584,143 +466,4 @@ fn utf8view_to_utf8(
     log::debug!("New field: {new_field:?}");
     let acc = acc.as_box();
     Ok(FieldArray::new(new_field, acc))
-}
-
-#[cfg(test)]
-mod test {
-    use std::sync::Arc;
-
-    use polars::{df, prelude::NamedFrom};
-    use polars_arrow::{
-        array::{BooleanArray, Int32Array, MapArray, StructArray},
-        io::ipc::write::{FileWriter as ArrowFileWriter, WriteOptions},
-        offset::OffsetsBuffer,
-    };
-
-    use super::*;
-    use crate::dataframe::{AdcData, Calibration, SignalDataFrame};
-
-    fn init() {
-        let _ = env_logger::builder()
-            .filter_level(log::LevelFilter::Trace)
-            .is_test(true)
-            .try_init();
-    }
-
-    #[test]
-    fn test_maparray() {
-        let boolean = BooleanArray::from_slice([false, false, true, true]).boxed();
-        let int = Int32Array::from_slice([42, 28, 19, 31]).boxed();
-
-        let fields = vec![
-            ArrowField::new("b".into(), ArrowDataType::Boolean, false),
-            ArrowField::new("c".into(), ArrowDataType::Int32, false),
-        ];
-
-        let array = StructArray::new(
-            ArrowDataType::Struct(fields.clone()),
-            4,
-            vec![boolean, int],
-            None,
-        );
-
-        let offsets = vec![0, 1, 2, 3, 4];
-        let dt = ArrowDataType::Map(
-            Box::new(ArrowField {
-                name: "entries".into(),
-                dtype: ArrowDataType::Struct(fields),
-                is_nullable: false,
-                metadata: None,
-            }),
-            false,
-        );
-
-        // Construct the MapArray
-        let map_array = MapArray::try_new(
-            dt,
-            OffsetsBuffer::try_from(offsets).unwrap(),
-            array.to_boxed(),
-            None,
-        )
-        .unwrap();
-
-        // Now you can use map_array in your application
-        println!("{:?}", map_array);
-    }
-
-    // #[test]
-    // fn test_series_to_array_minknow_uuid() {
-    //     init();
-    //     let example = String::from("67e55044-10b1-426f-9247-bb680e5fe0c8");
-    //     let series = Series::new("read_id".into(), [example]);
-    //     let farr = series_to_array(series);
-    // }
-
-    // #[test]
-    // fn test_series_to_array_minknow_vbz() {
-    //     init();
-    //     let example = Some(b"test" as &[u8]);
-    //     let series = Series::new("signal".into(), [example]);
-    //     let farr = series_to_array(series);
-    // }
-
-    // #[test]
-    // fn test_series_to_array_samples() {
-    //     init();
-    //     let example = [Some(717u32), Some(123u32)];
-    //     let series = Series::new("samples".into(), example);
-    //     let farr = series_to_array(series);
-    // }
-
-    // #[test]
-    // fn test_writer() {
-    //     init();
-    //     let example = Some(b"test" as &[u8]);
-    //     let series = Series::new("signal".into(), [example]);
-    //     let farr = vec![series_to_array(series)];
-    //     let schema = Arc::new(field_arrs_to_schema(&farr));
-    //     let chunk = field_arrs_to_record_batch(farr, schema.clone());
-
-    //     let buf: Vec<u8> = Vec::new();
-    //     let mut writer =
-    //         ArrowFileWriter::try_new(buf, schema.clone(), None,
-    // WriteOptions::default()).unwrap();     writer.write(&chunk,
-    // None).unwrap();     writer.finish().unwrap();
-    // }
-
-    // #[test]
-    // fn test_df() {
-    //     init();
-    //     let cal = Calibration(
-    //         [(
-    //             "67e55044-10b1-426f-9247-bb680e5fe0c8".into(),
-    //             AdcData {
-    //                 offset: 0.0,
-    //                 scale: 1.0,
-    //             },
-    //         )]
-    //         .into_iter()
-    //         .collect(),
-    //     );
-    //     let df = SignalDataFrame(df!("read_id" =>
-    // ["67e55044-10b1-426f-9247-bb680e5fe0c8",
-    // "67e55044-10b1-426f-9247-bb680e5fe0c8"],
-    // "signal" => [[0.1f32, 0.2f32].iter().collect::<Series>(), [0.3f32,
-    // 0.4f32].iter().collect::<Series>()],
-    // "samples" => [2u32, 2u32],
-    // ).unwrap());     println!("{df:?}");
-    //     let df = df.with_adc(&cal);
-    //     println!("{df:?}");
-    //     let field_arrays =
-    //         df.0.iter()
-    //             .map(|s| series_to_array(s.clone()))
-    //             .collect::<Vec<_>>();
-    //     let schema = Arc::new(field_arrs_to_schema(&field_arrays));
-    //     let chunk = field_arrs_to_record_batch(field_arrays, schema.clone());
-    //     let buf: Vec<u8> = Vec::new();
-    //     let mut writer =
-    //         ArrowFileWriter::try_new(buf, schema.clone(), None,
-    // WriteOptions::default()).unwrap();     writer.write(&chunk,
-    // None).unwrap();     writer.finish().unwrap();
-    // }
 }

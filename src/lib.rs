@@ -11,7 +11,6 @@ pub use polars;
 pub use polars_arrow;
 use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
 
-mod arrow;
 pub mod dataframe;
 pub mod error;
 pub mod footer;
@@ -60,12 +59,6 @@ fn to_dataframe<R: Read + Seek>(efile: &EmbeddedFile, mut file: R) -> Result<(),
         if let Ok(chunk) = table {
             let mut acc = Vec::new();
             for (arr, f) in chunk.arrays().iter().zip(fields.iter()) {
-                // let arr = convert_array(arr.as_ref());
-                // let s = polars::prelude::Series::try_from((f.1, arr));
-                // acc.push(s.unwrap());
-                // if let Some(s) = array_to_series(f.1, arr.clone()) {
-                //     acc.push(s);
-                // }
                 let s = array_to_series(f.1, arr.clone());
                 acc.push(s);
             }
@@ -87,7 +80,6 @@ mod tests {
 
     use std::{fs::File, io::Cursor};
 
-    // use arrow2::io::ipc::read::read_file_metadata;
     use flatbuffers::root;
     use memmap2::MmapOptions;
     use polars_arrow::io::ipc::read::read_file_metadata;
@@ -102,9 +94,11 @@ mod tests {
     fn test_pod5() -> eyre::Result<()> {
         let path = "extra/multi_fast5_zip_v0.pod5";
         let reader = File::open(path)?;
-        let mut mmap = unsafe { MmapOptions::new().map(&reader)? };
+
+        let mmap = unsafe { MmapOptions::new().map(&reader)? };
         #[cfg(target_family = "unix")]
         mmap.lock()?;
+
         let mut res = Err(());
         for i in 25..mmap.len() {
             let mut section = Cursor::new(&mmap[24..i]);

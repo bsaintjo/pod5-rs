@@ -157,14 +157,9 @@ mod test {
         let path = "extra/multi_fast5_zip_v3.pod5";
         let file = File::open(path)?;
         let footer = ParsedFooter::read_footer(&file)?;
-        let read_table = footer.read_table()?;
-        // let reader = read_embedded_arrow(&file, &read_table.0)?;
-        // println!("{:?}\n", reader.schema());
-
-        // let chunk = reader.next().unwrap();
-        // let chunk = chunk?;
-        // let arr = chunk.arrays()[1].as_ref();
-        // println!("{arr:?}");
+        assert!(footer.read_table().is_ok());
+        assert!(footer.run_info_table().is_ok());
+        assert!(footer.signal_table().is_ok());
         Ok(())
     }
 }

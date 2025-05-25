@@ -2,8 +2,7 @@ use std::io::{Cursor, Read, Seek};
 
 use arrow::{array::LargeBinaryArray, error::ArrowError, ipc::reader::FileReader};
 use extract::ArrowExtract;
-
-use crate::{footer::ParsedFooter, svb16::decode};
+use pod5::{footer::ParsedFooter, svb16::decode};
 
 mod extract;
 mod record;
@@ -28,25 +27,7 @@ where
     fn load_next_batch(&mut self) -> Option<()> {
         let batch = self.reader.next()?.unwrap();
         let read_ids = record::ReadId::extract(&batch, "read_id");
-        // let read_ids = batch
-        //     .column_by_name("read_id")
-        //     .unwrap()
-        //     .as_any()
-        //     .downcast_ref::<FixedSizeBinaryArray>()
-        //     .unwrap()
-        //     .iter()
-        //     .map(|x| ReadId::new(x.unwrap().to_vec()))
-        //     .collect::<Vec<_>>();
         let samples = u32::extract(&batch, "samples");
-        // let samples = batch
-        //     .column_by_name("samples")
-        //     .unwrap()
-        //     .as_any()
-        //     .downcast_ref::<UInt32Array>()
-        //     .unwrap()
-        //     .iter()
-        //     .map(|x| x.unwrap())
-        //     .collect::<Vec<_>>();
         let signals = batch
             .column_by_name("signal")
             .unwrap()
@@ -131,9 +112,9 @@ mod test {
         FixedSizeBinaryArray, Int16DictionaryArray, LargeBinaryArray, ListArray, StringArray,
         UInt32Array, UInt64Array,
     };
+    use pod5::{footer::ParsedFooter, svb16::decode};
 
     use super::*;
-    use crate::{footer::ParsedFooter, svb16::decode};
 
     #[test]
     #[ignore]
@@ -150,7 +131,6 @@ mod test {
         }
 
         Ok(())
-        // todo!()
     }
 
     #[test]

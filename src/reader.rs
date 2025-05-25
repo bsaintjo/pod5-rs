@@ -68,10 +68,9 @@ where
 mod test {
     use std::fs::File;
 
-    use polars::{lazy::dsl::GetOutput, prelude as pl, prelude::IntoLazy};
+    use polars::prelude::IntoLazy;
 
     use super::*;
-    use crate::dataframe::{decompress_signal_series, parse_uuid_from_read_id};
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
@@ -88,19 +87,7 @@ mod test {
         let signal_df = signals.next().unwrap().unwrap();
 
         println!("{signal_df:?}");
-        let x = signal_df
-            .0
-            .lazy()
-            // .select([
-            //     pl::col("read_id")
-            //         .map(parse_uuid_from_read_id, GetOutput::default())
-            //         .alias("read_id"),
-            //     pl::col("samples"),
-            //     pl::as_struct(vec![pl::col("samples"), pl::col("signal")])
-            //         .map(decompress_signal_series, GetOutput::default())
-            //         .alias("decompressed"),
-            // ])
-            .collect();
+        let x = signal_df.0.lazy().collect();
         println!("{x:?}");
         Ok(())
     }

@@ -13,7 +13,6 @@ use std::{
     io::{Cursor, Read, Seek, SeekFrom},
 };
 
-use lru::LruCache;
 use polars::{
     error::PolarsError,
     frame::DataFrame,
@@ -22,72 +21,15 @@ use polars::{
     series::Series,
 };
 use polars_arrow::{
-    array::{Array, FixedSizeBinaryArray},
     datatypes::Field,
     io::ipc::read::{read_file_metadata, FileReader},
-    record_batch::RecordBatchT,
 };
-use uuid::Uuid;
 
 pub(crate) mod compatibility;
 pub(crate) mod schema;
+pub(crate) mod signal_read_indexer;
 
 use crate::{error::Pod5Error, svb16::decode};
-
-struct SignalReadIndexer<R: Read + Seek> {
-    read_index: HashMap<String, Vec<u64>>,
-    batches: LruCache<u64, RecordBatchT<Box<dyn Array>>>,
-    reader: FileReader<R>,
-}
-
-#[derive(Debug, thiserror::Error)]
-enum IndexerError {
-    #[error("No read_id column was found.")]
-    NoMinknowUuid,
-}
-
-impl<R> SignalReadIndexer<R>
-where
-    R: Read + Seek,
-{
-    fn from_reader(reader: FileReader<R>) -> Result<Self, IndexerError> {
-        let mut read_index = HashMap::new();
-        let fields: Vec<(usize, &Field)> = reader
-            .metadata()
-            .schema
-            .iter()
-            .map(|f| f.1)
-            .enumerate()
-            .filter(|f| f.1.name == "read_id")
-            .collect();
-
-        if fields.len() != 1 {
-            return Err(IndexerError::NoMinknowUuid);
-        }
-
-        let read_id_col_index = fields[0].0;
-
-        for (batch_index, record_batch) in reader.enumerate() {
-            record_batch
-                .unwrap()
-                .get(read_id_col_index)
-                .unwrap()
-                .as_any()
-                .downcast_ref::<FixedSizeBinaryArray>()
-                .unwrap()
-                .values_iter()
-                .map(|x| Uuid::from_slice(x).unwrap().to_string())
-                .for_each(|rid| {
-                    read_index.insert(rid, batch_index);
-                });
-        }
-        todo!()
-    }
-
-    fn get_read(read_id: &str) -> SignalDataFrame {
-        todo!()
-    }
-}
 
 /// DataFrame wrapper for the POD5 Signal table.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -338,7 +280,7 @@ pub(crate) fn read_to_dataframe<R: Read + Seek>(
     file.seek(SeekFrom::Start(offset))?;
     file.read_exact(&mut run_info_buf)?;
     let mut run_info_buf = Cursor::new(run_info_buf);
-    let metadata = read_file_metadata(&mut run_info_buf).map_err(Pod5Error::ReadMetadataError)?;
+    let metadata = read_file_metadata(&mut run_info_buf).map_err(|_| err)?;
     let fields = metadata.schema.iter().map(|f| f.1).cloned().collect();
 
     let signal_table = FileReader::new(run_info_buf, metadata, None, None);

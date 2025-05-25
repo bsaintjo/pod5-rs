@@ -4,6 +4,7 @@ members = [
     "examples/convert-to-slow5",
     "examples/find-all-reads",
     "examples/pod5-cp",
+    "pod5-arrow",
     "pod5frame-py",
 ]
 
@@ -30,7 +31,22 @@ categories = [
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[workspace.dependencies]
+# Error handling
+thiserror = "2.0.11"
+
+# Parsing read ids
+uuid = { version = "1.14.0", features = ["v4"] }
+log = "0.4.25"
+eyre = "0.6.8"
+
 [dependencies]
+thiserror.workspace = true
+
+# Parsing read ids
+uuid.workspace = true
+log.workspace = true
+
 # encode/decode of sizes in control bytes in svb
 bitvec = "1.0.1"
 delta-encoding = "0.4.2"
@@ -43,8 +59,6 @@ itertools = "0.14.0"
 # Parsing footer schema
 flatbuffers = "24.3.25"
 
-# Error handling
-thiserror = "2.0.11"
 
 # DataFrame API
 polars = { version = "0.48.1", features = [
@@ -52,23 +66,19 @@ polars = { version = "0.48.1", features = [
     "dtype-array",
     "timezones",
     "lazy",
-    "list_arithmetic"
+    "list_arithmetic",
 ] }
 polars-arrow = { version = "0.48.1", features = ["io_ipc"] }
 polars-schema = "0.48.1"
 
-# Parsing read ids
-uuid = { version = "1.14.0", features = ["v4"] }
-
-log = "0.4.25"
-arrow = "54.2.0"
 lru = "0.13.0"
 
+[workspace.dev-dependencies]
 
 [dev-dependencies]
+eyre.workspace = true
 doc-comment = "0.3.3"
 env_logger = "0.11.8"
-eyre = "0.6.8"
 # Testing small files by memmap
 memmap2 = "0.9.5"
 pretty_assertions = "1.4.1"
