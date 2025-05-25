@@ -11,5 +11,5 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 pyo3 = { version = "0.24.2", features = ["extension-module", "abi3", "abi3-py37"] }
 pod5 = { path = ".." }
-svb16 = { path = "../svb16" }
+svb16.workspace = true
 pyo3-polars = "0.21.0"

@@ -1,9 +1,5 @@
 [workspace]
 members = [
-    # "examples/arrow-example",
-    # "examples/convert-to-slow5",
-    # "examples/find-all-reads",
-    # "examples/pod5-cp",
     "examples/*",
     "pod5-arrow",
     "pod5-footer",
@@ -48,28 +44,32 @@ itertools = "0.14.0"
 
 proptest = "1.6.0"
 
-[dependencies]
 pod5-footer = { path = "pod5-footer" }
 svb16 = { path = "svb16" }
+
+[dependencies]
+pod5-footer.workspace = true
+svb16.workspace = true
+
 thiserror.workspace = true
+log.workspace = true
 itertools.workspace = true
 
 # Parsing read ids
 uuid.workspace = true
-log.workspace = true
+
+lru = "0.13.0"
 
 # DataFrame API
 polars = { version = "0.48.1", features = [
     "dtype-full",
     "dtype-array",
-    "timezones",
+    # "timezones",
     "lazy",
     "list_arithmetic",
 ] }
 polars-arrow = { version = "0.48.1", features = ["io_ipc"] }
 polars-schema = "0.48.1"
-
-lru = "0.13.0"
 
 [dev-dependencies]
 eyre.workspace = true
