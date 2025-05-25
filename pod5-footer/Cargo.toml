@@ -1,0 +1,8 @@
+[package]
+name = "pod5-footer"
+version = "0.1.0"
+edition = "2024"
+authors.workspace = true
+
+[dependencies]
+flatbuffers = "24.3.25"
