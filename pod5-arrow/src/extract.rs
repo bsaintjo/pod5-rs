@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
-use arrow::array::ArrayAccessor;
-use arrow::array::ArrayIter;
-use arrow::array::RecordBatch;
-use arrow::array::{FixedSizeBinaryArray, Float32Array, UInt16Array, UInt32Array};
+use arrow::array::{
+    ArrayAccessor, ArrayIter, FixedSizeBinaryArray, Float32Array, RecordBatch, UInt16Array,
+    UInt32Array,
+};
 
 use super::record::ReadId;
 
@@ -65,7 +65,8 @@ pub(crate) struct Dict<T> {
 }
 
 pub(crate) mod private {
-    use crate::arrow::record::ReadId;
+    use crate::record::ReadId;
+
 
     pub trait Sealed {}
     impl Sealed for ReadId {}

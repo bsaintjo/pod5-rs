@@ -2,3 +2,5 @@
 /Cargo.lock
 /.vscode
 **/.venv
+pod5-tester
+log

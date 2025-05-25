@@ -2,6 +2,7 @@
 use std::io;
 
 use flatbuffers::InvalidFlatbuffer;
+use polars::error::PolarsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Pod5Error {
@@ -9,8 +10,9 @@ pub enum Pod5Error {
     #[error("Failed to parse footer, {0}")]
     FooterParserFailure(#[from] InvalidFlatbuffer),
 
-    /// The signature at the beginning or ending of the file wasn't able to be verified.
-    /// This may mean that the file was corrupted or incorrectly written.
+    /// The signature at the beginning or ending of the file wasn't able to be
+    /// verified. This may mean that the file was corrupted or incorrectly
+    /// written.
     #[error("Failed to verify signature: {0}")]
     SignatureFailure(&'static str),
 
@@ -27,7 +29,10 @@ pub enum Pod5Error {
     ReadTableMissing,
 
     #[error("Missing Run Info table from POD5")]
-    RunInfoTable,
+    RunInfoTableMissing,
+
+    #[error("Problem with reading metadata: {0}")]
+    ReadMetadataError(PolarsError),
 
     /// Error occured in the DataFrame API from polars
     #[error("{0}")]

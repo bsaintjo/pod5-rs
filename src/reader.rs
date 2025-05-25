@@ -2,7 +2,7 @@
 use std::io::{Read, Seek, SeekFrom};
 
 use crate::{
-    dataframe::{ReadDataFrameIter, SignalDataFrameIter},
+    dataframe::{ReadDataFrameIter, RunInfoDataFrameIter, SignalDataFrameIter},
     error::Pod5Error,
     footer::ParsedFooter,
 };
@@ -55,11 +55,11 @@ where
         Ok(iter)
     }
 
-    pub fn run_info_dfs(&mut self) -> Result<ReadDataFrameIter, Pod5Error> {
+    pub fn run_info_dfs(&mut self) -> Result<RunInfoDataFrameIter, Pod5Error> {
         let table = self.footer.run_info_table()?;
         let offset = table.as_ref().offset() as u64;
         let length = table.as_ref().length() as u64;
-        let iter = ReadDataFrameIter::new(offset, length, &mut self.reader)?;
+        let iter = RunInfoDataFrameIter::new(offset, length, &mut self.reader)?;
         Ok(iter)
     }
 }
@@ -68,10 +68,9 @@ where
 mod test {
     use std::fs::File;
 
-    use polars::{lazy::dsl::GetOutput, prelude as pl, prelude::IntoLazy};
+    use polars::prelude::IntoLazy;
 
     use super::*;
-    use crate::dataframe::{decompress_signal_series, parse_uuid_from_read_id};
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
@@ -88,19 +87,7 @@ mod test {
         let signal_df = signals.next().unwrap().unwrap();
 
         println!("{signal_df:?}");
-        let x = signal_df
-            .0
-            .lazy()
-            .select([
-                pl::col("read_id")
-                    .map(parse_uuid_from_read_id, GetOutput::default())
-                    .alias("read_id"),
-                pl::col("samples"),
-                pl::as_struct(vec![pl::col("samples"), pl::col("signal")])
-                    .map(decompress_signal_series, GetOutput::default())
-                    .alias("decompressed"),
-            ])
-            .collect();
+        let x = signal_df.0.lazy().collect();
         println!("{x:?}");
         Ok(())
     }

@@ -50,7 +50,7 @@ Output:
 ```text
 SignalDataFrame(shape: (22, 3)
 ┌─────────────────────────────────┬─────────────────────────────────┬─────────┐
-│ minknow.uuid                    ┆ minknow.vbz                     ┆ samples │
+│ read_id                    ┆ signal                     ┆ samples │
 │ ---                             ┆ ---                             ┆ ---     │
 │ str                             ┆ list[f32]                       ┆ u32     │
 ╞═════════════════════════════════╪═════════════════════════════════╪═════════╡
@@ -76,34 +76,15 @@ SignalDataFrame(shape: (22, 3)
 
 ## Why not use this
 
-- You aren't familiar with details of POD5 data format
-  - For example, in the above example, data from the same read is split across multiple rows. If you want to iterate over the signal data for each read, you will need to use additional Dataframe methods like polars, roughly `.groupby(["read_id"]).agg([col("samples").sum(), col("minknow.vbz").explode()])` to an aggregated DataFrame.
-  - To know what data you are want, you need to know which table contains your data and what the is the name of the column(s) you are interested in. For more documentation on what information each table, check the [TOML files here](https://github.com/nanoporetech/pod5-file-format/tree/master/docs/tables) for column names, data types, and documentation.
-  - Common columns:
-    - Signal data: SignalTable minknow.vbz
-    - Read ID: read_id in each table
-- You need to integrate data across multiple tables
-  - For storage efficiency, certain information is split into different POD5 tables. To combine these tables you need to intersect the two tables based on some index. For example, if you want to filter reads based on the end reason, you need to pull that information from the ReadTable, then
-- You need to write POD5 files
-  - Currently only support is available for reading
-- You need support for older versions of POD5 files
-  - API is based on POD5 v3, and it may work with other versions but likely will panic.
+- This crate is a work in progress. If there is a feature you are interested in, please open a GitHub issue.
 
 ## Roadmap
 
 - [ ] Python integration via maturin and PyO3
 - [ ] Support for read indexing
-- [ ] Convenience/examples for conversion to SLOW5/BLOW5
 - [ ] VBZ de/compression
   - [x] Decompression
   - [ ] Compression (works but isn't exact?)
-- [ ] DataFrame for Signal Table
-  - [x] Convert read_id into binary
-  - [x] Decompress signal data
-- [ ] DataFrame for Run Info Table
-- [ ] DataFrame for Reads Table
-- [ ] Support mmap
-- [ ] Arrow-based API
 - [ ] Optimize decompression
   - [ ] Switch Zig-zag encoding dependency
   - [ ] Try `varint-rs`, `varint-simd`, etc.
@@ -113,10 +94,6 @@ SignalDataFrame(shape: (22, 3)
 ### Compressed output differs, but uncompressed output is the same
 
 If you are trying validate this library and compare the compressed array from here to the official implementation, you will find the arrays aren't exactly the same. However, from my preliminary tests, the decompressed output should match. I believe this issue is due to how the buffer is allocated, as this implementation iteratively builds up the compressed array, whereas the official implementation preallocates the array based on expectations on the size of the compressed output. If you find otherwise, or would like to help on this front, please open a GitHub issue.
-
-### Dataframes can drop certain types of columns
-
-Certain types of columns in the a POD5 Arrow file, such as map arrays, are not supported by polars at this point. For now, some of these columns are dropped and logging will inform when these occur. There are some ways around this, and if there is a column(s) you'd like for the DataFrame API to be able to support, please open a GitHub issue.
 
 ## License
 

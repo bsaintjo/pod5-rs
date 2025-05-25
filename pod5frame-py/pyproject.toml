@@ -17,7 +17,8 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: File Formats",
-    "Private :: Do Not Upload",                                    # TODO Remove for upload to PyPI
+    # TODO Remove for upload to PyPI
+    "Private :: Do Not Upload",
 ]
 dynamic = ["version"]
 readme = "README.md"
@@ -29,7 +30,7 @@ dependencies = ["polars"]
 source = "https://github.com/bsaintjo/pod5-rs/tree/dev/pod5frame-py"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "pdoc"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

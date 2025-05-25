@@ -1,6 +1,7 @@
 //! `polars` DataFrame API for POD5 files
 //!
-//! This module provides utilities for interacting with POD5 tables using a DataFrame API from `polars`.
+//! This module provides utilities for interacting with POD5 tables using a
+//! DataFrame API from `polars`.
 
 // Polars notes
 // take_unchecked needs to support
@@ -12,7 +13,6 @@ use std::{
     io::{Cursor, Read, Seek, SeekFrom},
 };
 
-use lru::LruCache;
 use polars::{
     error::PolarsError,
     frame::DataFrame,
@@ -21,71 +21,15 @@ use polars::{
     series::Series,
 };
 use polars_arrow::{
-    array::{Array, FixedSizeBinaryArray},
     datatypes::Field,
     io::ipc::read::{read_file_metadata, FileReader},
-    record_batch::RecordBatchT,
 };
-use uuid::Uuid;
 
 pub(crate) mod compatibility;
+pub(crate) mod schema;
+pub(crate) mod signal_read_indexer;
 
 use crate::{error::Pod5Error, svb16::decode};
-
-struct SignalReadIndexer<R: Read + Seek> {
-    read_index: HashMap<String, Vec<u64>>,
-    batches: LruCache<u64, RecordBatchT<Box<dyn Array>>>,
-    reader: FileReader<R>,
-}
-
-#[derive(Debug, thiserror::Error)]
-enum IndexerError {
-    #[error("No minknow.uuid column was found.")]
-    NoMinknowUuid,
-}
-
-impl<R> SignalReadIndexer<R>
-where
-    R: Read + Seek,
-{
-    fn from_reader(reader: FileReader<R>) -> Result<Self, IndexerError> {
-        let mut read_index = HashMap::new();
-        let fields: Vec<(usize, &Field)> = reader
-            .metadata()
-            .schema
-            .iter()
-            .map(|f| f.1)
-            .enumerate()
-            .filter(|f| f.1.name == "minknow.uuid")
-            .collect();
-
-        if fields.len() != 1 {
-            return Err(IndexerError::NoMinknowUuid);
-        }
-
-        let read_id_col_index = fields[0].0;
-
-        for (batch_index, record_batch) in reader.enumerate() {
-            record_batch
-                .unwrap()
-                .get(read_id_col_index)
-                .unwrap()
-                .as_any()
-                .downcast_ref::<FixedSizeBinaryArray>()
-                .unwrap()
-                .values_iter()
-                .map(|x| Uuid::from_slice(x).unwrap().to_string())
-                .for_each(|rid| {
-                    read_index.insert(rid, batch_index);
-                });
-        }
-        todo!()
-    }
-
-    fn get_read(read_id: &str) -> SignalDataFrame {
-        todo!()
-    }
-}
 
 /// DataFrame wrapper for the POD5 Signal table.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -102,9 +46,9 @@ impl SignalDataFrame {
             .0
             .lazy()
             .with_column(
-                pl::as_struct(vec![pl::col("samples"), pl::col("minknow.vbz")])
+                pl::as_struct(vec![pl::col("samples"), pl::col("signal")])
                     .map(decompress_signal_series, GetOutput::default())
-                    .alias("minknow.vbz"),
+                    .alias("signal"),
             )
             .collect()
             .map(Self)?;
@@ -113,7 +57,7 @@ impl SignalDataFrame {
 
     /// Convert i16 ADC signal data into f32 picoamps
     pub fn to_picoamps(mut self, calibration: &Calibration) -> Self {
-        let adcs = self.0["minknow.uuid"]
+        let adcs = self.0["read_id"]
             .str()
             .unwrap()
             .into_iter()
@@ -122,8 +66,28 @@ impl SignalDataFrame {
             .collect::<Vec<_>>();
         let offsets = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.offset)));
         let scale = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.scale)));
-        let res = (&self.0["minknow.vbz"] + &offsets).unwrap();
+        let res = (&self.0["signal"] + &offsets).unwrap();
         let res = (res * scale).unwrap();
+        self.0.with_column(res).unwrap();
+        self
+    }
+
+    /// Convert f32 picoamps signal data into i16 ADC
+    pub(crate) fn with_adc(mut self, calibration: &Calibration) -> Self {
+        let adcs = self.0["read_id"]
+            .str()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .map(|rid| calibration.0.get(rid).unwrap())
+            .collect::<Vec<_>>();
+        let offsets = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.offset)));
+        let scale = Column::from(Series::from_iter(adcs.iter().map(|adc| adc.scale)));
+        let res = (&self.0["signal"] / &scale).unwrap();
+        let res = (res - offsets)
+            .unwrap()
+            .cast(&pl::DataType::List(Box::new(pl::DataType::Int16)))
+            .unwrap();
         self.0.with_column(res).unwrap();
         self
     }
@@ -145,17 +109,10 @@ impl SignalDataFrameIter {
         length: u64,
         file: &mut R,
     ) -> Result<Self, Pod5Error> {
-        let mut buf = vec![0u8; length as usize];
-        file.seek(SeekFrom::Start(offset))?;
-        file.read_exact(&mut buf)?;
-        let mut run_info_buf = Cursor::new(buf);
-        let metadata =
-            read_file_metadata(&mut run_info_buf).map_err(|_| Pod5Error::SignalTableMissing)?;
-        let fields = metadata.schema.clone();
-
-        let table_reader = FileReader::new(run_info_buf, metadata, None, None);
+        let (fields, table_reader) =
+            read_to_dataframe(offset, length, Pod5Error::SignalTableMissing, file)?;
         Ok(Self {
-            fields: fields.iter().map(|f| f.1).cloned().collect(),
+            fields,
             table_reader,
         })
     }
@@ -185,8 +142,9 @@ impl ReadDataFrame {
     /// Convert the `read_id` column into UUID strings.
     ///
     /// By default, `read_id`s are in the binary representation of a UUID. Use
-    /// this method if you want to read the view the UUID in ASCII. The `col_name` can
-    /// be any existing column or a new column that will be added to the end of the DataFrame.
+    /// this method if you want to read the view the UUID in ASCII. The
+    /// `col_name` can be any existing column or a new column that will be
+    /// added to the end of the DataFrame.
     pub fn parse_read_ids(self, col_name: &str) -> Result<Self, Pod5Error> {
         let res = self
             .0
@@ -239,28 +197,75 @@ impl Iterator for ReadDataFrameIter {
     }
 }
 
+pub struct RunInfoDataFrameIter {
+    pub(crate) fields: Vec<Field>,
+    pub(crate) table_reader: FileReader<Cursor<Vec<u8>>>,
+}
+
+impl RunInfoDataFrameIter {
+    pub(crate) fn new<R: Read + Seek>(
+        offset: u64,
+        length: u64,
+        file: &mut R,
+    ) -> Result<Self, Pod5Error> {
+        let (fields, table_reader) =
+            read_to_dataframe(offset, length, Pod5Error::RunInfoTableMissing, file)?;
+        Ok(Self {
+            fields,
+            table_reader,
+        })
+    }
+}
+
+impl Iterator for RunInfoDataFrameIter {
+    type Item = Result<RunInfoDataFrame, Pod5Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let df = get_next_df(&self.fields, &mut self.table_reader);
+        df.map(|res| res.map(RunInfoDataFrame))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RunInfoDataFrame(pub(crate) DataFrame);
+
+impl RunInfoDataFrame {
+    pub fn into_inner(self) -> polars::prelude::DataFrame {
+        self.0
+    }
+}
+
 pub(crate) fn get_next_df(
     fields: &[Field],
     table_reader: &mut FileReader<Cursor<Vec<u8>>>,
 ) -> Option<Result<DataFrame, Pod5Error>> {
-    if let Ok(chunk) = table_reader.next()? {
-        let mut acc = Vec::with_capacity(fields.len());
-        for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
-            // let arr = convert_array2(arr);
-            // if let Some(s) = compatibility::array_to_series(f, arr) {
-            //     acc.push(s);
-            // }
-            let s = compatibility::array_to_series(f, arr);
-            acc.push(s);
-            // let s = polars::prelude::Series::try_from((f, arr));
-            // acc.push(s.unwrap());
-        }
+    // TODO: Remove unwrap and avoid Option since it
+    // can hide conversion problems
+    table_reader.next().map(|chunk| {
+        chunk
+            .map(|batch| {
+                let mut acc = Vec::with_capacity(fields.len());
+                for (arr, f) in batch.into_arrays().into_iter().zip(fields.iter()) {
+                    let s = compatibility::array_to_series(f, arr);
+                    acc.push(s);
+                }
 
-        let df = polars::prelude::DataFrame::from_iter(acc);
-        Some(Ok(df))
-    } else {
-        None
-    }
+                polars::prelude::DataFrame::from_iter(acc)
+            })
+            .map_err(Pod5Error::PolarsError)
+    })
+    // if let Some(chunk) = Some(table_reader.next()?.unwrap()) {
+    //     let mut acc = Vec::with_capacity(fields.len());
+    //     for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
+    //         let s = compatibility::array_to_series(f, arr);
+    //         acc.push(s);
+    //     }
+
+    //     let df = polars::prelude::DataFrame::from_iter(acc);
+    //     Some(Ok(df))
+    // } else {
+    //     None
+    // }
 }
 
 pub(crate) type TableReader = (Vec<Field>, FileReader<Cursor<Vec<u8>>>);
@@ -313,20 +318,17 @@ pub(crate) fn decompress_signal_series(
             Series::from_iter(decoded)
         })
         .collect::<Vec<_>>();
-    Ok(Some(Column::from(Series::new(
-        "decompressed".into(),
-        out,
-    ))))
+    Ok(Some(Column::from(Series::new("decompressed".into(), out))))
 }
 
 #[derive(Debug)]
-struct AdcData {
-    offset: f32,
-    scale: f32,
+pub(crate) struct AdcData {
+    pub(crate) offset: f32,
+    pub(crate) scale: f32,
 }
 
 #[derive(Debug)]
-pub struct Calibration(HashMap<String, AdcData>);
+pub struct Calibration(pub(crate) HashMap<String, AdcData>);
 
 impl Calibration {
     fn from_read_dfs(iter: ReadDataFrameIter) -> Self {
@@ -334,7 +336,7 @@ impl Calibration {
         for read_df in iter.flatten() {
             let df = read_df
                 .0
-                .select(["minknow.uuid", "calibration_offset", "calibration_scale"])
+                .select(["read_id", "calibration_offset", "calibration_scale"])
                 .unwrap();
             let iters = df.iter().collect::<Vec<_>>();
             for (read_id, offset, scale) in itertools::multizip((

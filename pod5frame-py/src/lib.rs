@@ -1,9 +1,16 @@
 use std::{fs::File, path::PathBuf};
 
-use pod5::{polars::df, reader::Reader};
+use pod5::{
+    dataframe::SignalDataFrame,
+    polars::df,
+    reader::Reader,
+    svb16::{decode, encode},
+    writer::Writer,
+};
 use pyo3::{
-    exceptions::{PyException, PyIOError},
+    exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,
+    py_run,
 };
 use pyo3_polars::PyDataFrame;
 
@@ -25,7 +32,129 @@ impl SignalIter {
     }
 }
 
-/// Reads a POD5 file and allows for getting various iterators over parts of the file
+#[pyclass]
+struct RunInfoIter(pod5::dataframe::RunInfoDataFrameIter);
+
+#[pymethods]
+impl RunInfoIter {
+    fn __iter__(me: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        me
+    }
+
+    fn __next__(mut me: PyRefMut<'_, Self>) -> Option<PyDataFrame> {
+        match me.0.next() {
+            Some(Ok(x)) => Some(PyDataFrame(x.into_inner())),
+            _ => None,
+        }
+    }
+}
+
+#[pyclass]
+struct ReadIter(pod5::dataframe::ReadDataFrameIter);
+
+#[pymethods]
+impl ReadIter {
+    fn __iter__(me: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        me
+    }
+
+    fn __next__(mut me: PyRefMut<'_, Self>) -> Option<PyDataFrame> {
+        match me.0.next() {
+            Some(Ok(x)) => Some(PyDataFrame(x.into_inner())),
+            _ => None,
+        }
+    }
+}
+
+#[pyclass(eq, eq_int)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TableType {
+    Signal,
+    Reads,
+    RunInfo,
+    OtherIndex,
+}
+
+#[pyclass]
+struct SignalTable;
+
+#[pymethods]
+impl TableType {
+    #[new]
+    fn new() -> Self {
+        Self::Signal
+    }
+}
+
+#[pyclass]
+struct FrameWriter {
+    path: PathBuf,
+    writer: Option<Writer<File>>,
+}
+
+#[pymethods]
+impl FrameWriter {
+    #[new]
+    fn new(path: PathBuf) -> PyResult<Self> {
+        // Ok(Self { path, writer: None })
+        let file = File::create(&path)?;
+        let writer = Writer::from_writer(file)
+            .map_err(|e| PyException::new_err(format!("Failed to open writer: {e}")))?;
+        Ok(Self {
+            path,
+            writer: Some(writer),
+        })
+    }
+
+    fn write_table(&mut self, _table: &TableType) -> PyResult<()> {
+        // Implement writing logic here
+        Err(PyNotImplementedError::new_err("Not yet implemented"))
+    }
+
+    fn write_signal_tables(&mut self, tables: &mut SignalIter) -> PyResult<()> {
+        let inner = self.writer.as_mut().unwrap();
+        let tables = &mut tables.0;
+        let mut guard = inner.guard::<SignalDataFrame>();
+        for table in tables {
+            let table = table.map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
+            guard
+                .write_batch(&table)
+                .map_err(|_| PyException::new_err("Failed to write table"))?;
+        }
+        Ok(())
+    }
+
+    fn open(&mut self) -> PyResult<()> {
+        Ok(())
+    }
+
+    fn close(&mut self) -> PyResult<()> {
+        if let Some(writer) = self.writer.take() {
+            writer
+                .finish()
+                .map_err(|_| PyException::new_err("Failed to finish file"))?;
+        }
+        Ok(())
+    }
+
+    fn __enter__(mut me: PyRefMut<'_, Self>) -> PyResult<PyRefMut<'_, Self>> {
+        me.open()?;
+        Ok(me)
+    }
+
+    fn __exit__(
+        &mut self,
+        _exc_type: PyObject,
+        _exc_val: PyObject,
+        _exc_tb: PyObject,
+    ) -> PyResult<()> {
+        self.close()?;
+        Ok(())
+    }
+}
+
+/// Reads a POD5 file and allows for getting various iterators over parts of the
+/// file
 #[pyclass]
 struct FrameReader {
     path: PathBuf,
@@ -60,8 +189,13 @@ impl FrameReader {
         self.close()
     }
 
-    fn reads(&self) {
-        todo!()
+    fn reads(&mut self) -> PyResult<ReadIter> {
+        self.reader
+            .as_mut()
+            .ok_or_else(|| PyException::new_err("Must call read method or use context manager"))?
+            .read_dfs()
+            .map(ReadIter)
+            .map_err(|_| PyException::new_err("Missing SignalTable"))
     }
 
     /// Return an iterator over signal data represented as polars DataFrames
@@ -74,8 +208,13 @@ impl FrameReader {
             .map_err(|_| PyException::new_err("Missing SignalTable"))
     }
 
-    fn run_info(&self) {
-        todo!()
+    fn run_info(&mut self) -> PyResult<RunInfoIter> {
+        self.reader
+            .as_mut()
+            .ok_or_else(|| PyException::new_err("Must call read method or use context manager"))?
+            .run_info_dfs()
+            .map(RunInfoIter)
+            .map_err(|_| PyException::new_err("Missing SignalTable"))
     }
 }
 
@@ -99,12 +238,30 @@ fn pod5frame(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_function(wrap_pyfunction!(load, m)?)?;
     m.add_class::<FrameReader>()?;
+    m.add_class::<FrameWriter>()?;
     utils(m)?;
     Ok(())
 }
 
 fn utils(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    let utils_module = PyModule::new(m.py(), "utils")?;
-    m.add_submodule(&utils_module)?;
+    let submodule = PyModule::new(m.py(), "utils")?;
+    py_run!(
+        m.py(),
+        submodule,
+        "import sys; sys.modules['pod5frame.utils'] = submodule"
+    );
+    submodule.add_function(wrap_pyfunction!(svb16_decode, &submodule)?)?;
+    submodule.add_function(wrap_pyfunction!(svb16_encode, &submodule)?)?;
+    m.add_submodule(&submodule)?;
     Ok(())
+}
+
+#[pyfunction]
+fn svb16_encode(uncompressed: Vec<i16>) -> PyResult<Vec<u8>> {
+    encode(&uncompressed).map_err(|_| PyException::new_err("Encoding failure"))
+}
+
+#[pyfunction]
+fn svb16_decode(compressed: Vec<u8>, count: usize) -> PyResult<Vec<i16>> {
+    decode(&compressed, count).map_err(|_| PyException::new_err("Decoding failure"))
 }
