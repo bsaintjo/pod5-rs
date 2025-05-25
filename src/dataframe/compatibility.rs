@@ -19,8 +19,10 @@ use polars_arrow::{
 };
 use polars_schema::Schema;
 use uuid::Uuid;
+use svb16;
 
-use crate::{dataframe::schema::map_field, svb16};
+
+use crate::{dataframe::schema::map_field};
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays
 /// except the Extensions. In order for properly handle Extension types, the

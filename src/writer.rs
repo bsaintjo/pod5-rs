@@ -8,9 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use pod5_footer::{
-    footer_generated::minknow::reads_format::ContentType, TableInfo, FOOTER_MAGIC
-};
+use pod5_footer::{footer_generated::minknow::reads_format::ContentType, TableInfo, FOOTER_MAGIC};
 use polars::{
     error::PolarsError,
     frame::DataFrame,
@@ -21,10 +19,10 @@ use polars_schema::Schema;
 use uuid::Uuid;
 
 use crate::{
-    FILE_SIGNATURE,
     dataframe::{
-        ReadDataFrame, RunInfoDataFrame, SignalDataFrame, compatibility::record_batch_to_compat,
+        compatibility::record_batch_to_compat, ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
     },
+    FILE_SIGNATURE,
 };
 
 const SOFTWARE: &str = "pod5-rs";
@@ -326,7 +324,7 @@ impl<W: Write + Seek> Writer<W> {
         }
         let mut guard = self.guard::<T>();
         closure(&mut guard)?;
-        guard.finish2()?;
+        guard.finish()?;
         Ok(())
     }
 
@@ -477,7 +475,7 @@ where
         Ok(())
     }
 
-    pub fn finish2(mut self) -> Result<(), WriteError> {
+    pub fn finish(mut self) -> Result<(), WriteError> {
         if let Some(TableWriter::PostInit(mut x)) = self.inner.take() {
             x.finish()?;
             let inner = x.into_inner();
@@ -496,7 +494,7 @@ mod test {
         prelude::{CategoricalChunkedBuilder, CategoricalOrdering, CompatLevel},
         series::{IntoSeries, Series},
     };
-    use polars_arrow::io::ipc::read::{FileReader, read_file_metadata};
+    use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
 
     use super::*;
     use crate::{

@@ -1,0 +1,15 @@
+[package]
+name = "svb16"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+bitvec = "1.0.1"
+delta-encoding = "0.4.2"
+zigzag = "0.1.0"
+zstd = "0.13.3"
+itertools.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

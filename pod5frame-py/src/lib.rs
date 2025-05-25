@@ -4,9 +4,9 @@ use pod5::{
     dataframe::SignalDataFrame,
     polars::df,
     reader::Reader,
-    svb16::{decode, encode},
     writer::Writer,
 };
+use svb16::{decode, encode};
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,

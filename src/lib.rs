@@ -5,7 +5,6 @@ pub use polars_arrow;
 pub mod dataframe;
 pub mod error;
 pub mod reader;
-pub mod svb16;
 pub mod writer;
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];

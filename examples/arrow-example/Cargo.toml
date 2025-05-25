@@ -8,5 +8,6 @@ authors.workspace = true
 arrow = "53.3.0"
 eyre = "0.6.12"
 pod5 = { path = "../..", version = "0.1" }
+svb16 = { path = "../../svb16" }
 pod5-footer = { path = "../../pod5-footer" }
 uuid = "1.11.0"

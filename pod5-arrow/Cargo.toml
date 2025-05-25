@@ -1,11 +1,12 @@
 [package]
 name = "pod5-arrow"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 authors.workspace = true
 
 [dependencies]
 pod5 = { path = ".." }
+svb16 = { path = "../svb16" }
 pod5-footer = { path = "../pod5-footer"}
 arrow = "54.2.0"
 thiserror.workspace = true

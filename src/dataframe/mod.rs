@@ -29,7 +29,9 @@ pub(crate) mod compatibility;
 pub(crate) mod schema;
 pub(crate) mod signal_read_indexer;
 
-use crate::{error::Pod5Error, svb16::decode};
+use svb16::decode;
+
+use crate::error::Pod5Error;
 
 /// DataFrame wrapper for the POD5 Signal table.
 #[derive(Debug, Clone, PartialEq, Default)]
