@@ -1,18 +1,13 @@
 use std::{fs::File, path::PathBuf};
 
-use pod5::{
-    dataframe::SignalDataFrame,
-    polars::df,
-    reader::Reader,
-    writer::Writer,
-};
-use svb16::{decode, encode};
+use pod5::{dataframe::SignalDataFrame, polars::df, reader::Reader, writer::Writer};
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,
     py_run,
 };
 use pyo3_polars::PyDataFrame;
+use svb16::{decode, encode};
 
 /// An iterator over the SignalTable, yielding polars DataFrames
 #[pyclass]

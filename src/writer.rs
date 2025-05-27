@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use pod5_footer::{footer_generated::minknow::reads_format::ContentType, TableInfo, FOOTER_MAGIC};
+use pod5_footer::{FOOTER_MAGIC, TableInfo, footer_generated::minknow::reads_format::ContentType};
 use polars::{
     error::PolarsError,
     frame::DataFrame,
@@ -19,10 +19,10 @@ use polars_schema::Schema;
 use uuid::Uuid;
 
 use crate::{
-    dataframe::{
-        compatibility::record_batch_to_compat, ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
-    },
     FILE_SIGNATURE,
+    dataframe::{
+        ReadDataFrame, RunInfoDataFrame, SignalDataFrame, compatibility::record_batch_to_compat,
+    },
 };
 
 const SOFTWARE: &str = "pod5-rs";
@@ -494,7 +494,7 @@ mod test {
         prelude::{CategoricalChunkedBuilder, CategoricalOrdering, CompatLevel},
         series::{IntoSeries, Series},
     };
-    use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
+    use polars_arrow::io::ipc::read::{FileReader, read_file_metadata};
 
     use super::*;
     use crate::{

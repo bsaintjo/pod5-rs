@@ -14,16 +14,16 @@ use uuid::Uuid;
 
 use super::SignalDataFrame;
 
-struct SignalReadIndexer<R: Read + Seek> {
-    read_index: HashMap<String, Vec<u64>>,
-    batches: LruCache<u64, RecordBatchT<Box<dyn Array>>>,
-    reader: FileReader<R>,
-}
-
 #[derive(Debug, thiserror::Error)]
 enum IndexerError {
     #[error("No read_id column was found.")]
     NoMinknowUuid,
+}
+
+struct SignalReadIndexer<R: Read + Seek> {
+    read_index: HashMap<String, Vec<u64>>,
+    batches: LruCache<u64, RecordBatchT<Box<dyn Array>>>,
+    reader: FileReader<R>,
 }
 
 impl<R> SignalReadIndexer<R>

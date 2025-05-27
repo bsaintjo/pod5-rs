@@ -9,57 +9,16 @@ pub mod writer;
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
-
-// fn read_footer(mut file: &File) -> Result<Vec<u8>, io::Error> {
-//     let file_size = file.metadata()?.len();
-//     let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
-//     let footer_length = footer_length_end - 8;
-//     file.seek(SeekFrom::Start(footer_length))?;
-//     let mut buf = [0; 8];
-//     file.read_exact(&mut buf)?;
-//     let flen = i64::from_le_bytes(buf);
-//     file.seek(SeekFrom::Start(footer_length - (flen as u64)))?;
-//     let mut buf = vec![0u8; flen as usize];
-//     file.read_exact(&mut buf)?;
-//     Ok(buf)
-// }
-
-// fn to_dataframe<R: Read + Seek>(efile: &EmbeddedFile, mut file: R) -> Result<(), Pod5Error> {
-//     let offset = efile.offset() as u64;
-//     let length = efile.length() as u64;
-//     let mut run_info_buf = vec![0u8; length as usize];
-//     file.seek(SeekFrom::Start(offset))?;
-//     file.read_exact(&mut run_info_buf)?;
-//     let mut run_info_buf = Cursor::new(run_info_buf);
-//     let metadata =
-//         read_file_metadata(&mut run_info_buf).map_err(|_| Pod5Error::SignalTableMissing)?;
-//     let fields = metadata.schema.clone();
-
-//     let signal_table = FileReader::new(run_info_buf, metadata.clone(), None, None);
-//     for table in signal_table {
-//         if let Ok(chunk) = table {
-//             let mut acc = Vec::new();
-//             for (arr, f) in chunk.arrays().iter().zip(fields.iter()) {
-//                 let s = array_to_series(f.1, arr.clone());
-//                 acc.push(s);
-//             }
-
-//             let df = polars::prelude::DataFrame::from_iter(acc.into_iter());
-//             println!("{df}");
-//         } else {
-//             println!("Error read table!")
-//         }
-//     }
-//     Ok(())
-// }
-
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md", readme);
 
 #[cfg(test)]
 mod tests {
 
-    use std::{fs::File, io::{self, Cursor, Read, Seek, SeekFrom}};
+    use std::{
+        fs::File,
+        io::{self, Cursor, Read, Seek, SeekFrom},
+    };
 
     use memmap2::MmapOptions;
     use polars_arrow::io::ipc::read::read_file_metadata;
@@ -117,19 +76,19 @@ mod tests {
     //     file.read_exact(&mut signal_buf)?;
 
     //     let mut signal_buf = Cursor::new(signal_buf);
-    //     let metadata = polars_arrow::io::ipc::read::read_file_metadata(&mut signal_buf)?;
-    //     let fields = metadata.schema.clone();
+    //     let metadata = polars_arrow::io::ipc::read::read_file_metadata(&mut
+    // signal_buf)?;     let fields = metadata.schema.clone();
     //     println!("metadata schema: {:?}", &metadata.schema);
     //     println!("metadata ipc schema: {:?}", &metadata.ipc_schema);
 
     //     let signal_table =
-    //         polars_arrow::io::ipc::read::FileReader::new(signal_buf, metadata.clone(), None, None);
-    //     for table in signal_table {
+    //         polars_arrow::io::ipc::read::FileReader::new(signal_buf,
+    // metadata.clone(), None, None);     for table in signal_table {
     //         if let Ok(chunk) = table {
     //             let mut acc = Vec::new();
-    //             for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
-    //                 let s = array_to_series(f.1, arr);
-    //                 acc.push(s);
+    //             for (arr, f) in
+    // chunk.into_arrays().into_iter().zip(fields.iter()) {                 let
+    // s = array_to_series(f.1, arr);                 acc.push(s);
     //             }
 
     //             let df = polars::prelude::DataFrame::from_iter(acc.into_iter());

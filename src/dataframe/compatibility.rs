@@ -18,11 +18,10 @@ use polars_arrow::{
     record_batch::RecordBatchT,
 };
 use polars_schema::Schema;
-use uuid::Uuid;
 use svb16;
+use uuid::Uuid;
 
-
-use crate::{dataframe::schema::map_field};
+use crate::dataframe::schema::map_field;
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays
 /// except the Extensions. In order for properly handle Extension types, the
@@ -110,7 +109,6 @@ impl FieldArray {
         Self { field, arr }
     }
 }
-
 
 /// Converts a signal array into a LargeBinary array.
 ///
@@ -326,7 +324,6 @@ pub(crate) fn record_batch_to_compat(
     for ((name, field), array) in schema.iter().zip(chunks.into_iter()) {
         log::debug!("record_btach_to_compat, field {field:?}");
         let farr = match (name.as_str(), &field.dtype) {
-
             // Signal in the ReadTable (list(u64))
             ("signal", ArrowDataType::LargeList(x))
                 if matches!(x.dtype(), ArrowDataType::UInt64) =>
@@ -443,7 +440,6 @@ fn large_list_to_map(
         arr: map_array.to_boxed(),
     })
 }
-
 
 fn utf8view_to_utf8(
     field: &ArrowField,

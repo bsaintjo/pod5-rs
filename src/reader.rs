@@ -2,6 +2,7 @@
 use std::io::{Read, Seek, SeekFrom};
 
 use pod5_footer::ParsedFooter;
+
 use crate::{
     dataframe::{ReadDataFrameIter, RunInfoDataFrameIter, SignalDataFrameIter},
     error::Pod5Error,

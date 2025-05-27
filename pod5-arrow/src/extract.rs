@@ -67,7 +67,6 @@ pub(crate) struct Dict<T> {
 pub(crate) mod private {
     use crate::record::ReadId;
 
-
     pub trait Sealed {}
     impl Sealed for ReadId {}
     impl Sealed for u32 {}

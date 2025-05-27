@@ -42,9 +42,13 @@ pub struct TableInfo {
 
 impl TableInfo {
     pub fn new(offset: i64, length: i64, content_type: ContentType) -> Self {
-        Self { offset, length, content_type }
+        Self {
+            offset,
+            length,
+            content_type,
+        }
     }
-    
+
     pub fn offset(&self) -> i64 {
         self.offset
     }

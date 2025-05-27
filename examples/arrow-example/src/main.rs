@@ -9,8 +9,8 @@ use arrow::{
     datatypes::{GenericBinaryType, UInt32Type, UInt64Type},
     ipc::reader::FileReader,
 };
-use svb16;
 use pod5_footer::ParsedFooter;
+use svb16;
 
 fn get_reads_info(buf: &[u8]) -> eyre::Result<Vec<Arc<dyn Array>>> {
     let cursor = Cursor::new(buf);

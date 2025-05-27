@@ -22,7 +22,7 @@ use polars::{
 };
 use polars_arrow::{
     datatypes::Field,
-    io::ipc::read::{read_file_metadata, FileReader},
+    io::ipc::read::{FileReader, read_file_metadata},
 };
 
 pub(crate) mod compatibility;
@@ -256,18 +256,6 @@ pub(crate) fn get_next_df(
             })
             .map_err(Pod5Error::PolarsError)
     })
-    // if let Some(chunk) = Some(table_reader.next()?.unwrap()) {
-    //     let mut acc = Vec::with_capacity(fields.len());
-    //     for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
-    //         let s = compatibility::array_to_series(f, arr);
-    //         acc.push(s);
-    //     }
-
-    //     let df = polars::prelude::DataFrame::from_iter(acc);
-    //     Some(Ok(df))
-    // } else {
-    //     None
-    // }
 }
 
 pub(crate) type TableReader = (Vec<Field>, FileReader<Cursor<Vec<u8>>>);
