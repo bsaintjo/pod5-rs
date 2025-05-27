@@ -190,11 +190,6 @@ impl ReadDataFrameIter {
 
 impl Iterator for ReadDataFrameIter {
     type Item = Result<ReadDataFrame, Pod5Error>;
-#[derive(Debug, thiserror::Error)]
-enum IndexerError {
-    #[error("No read_id column was found.")]
-    NoMinknowUuid,
-}
     /// TODO: Check when Result happens
     fn next(&mut self) -> Option<Self::Item> {
         let df = get_next_df(&self.fields, &mut self.table_reader);
