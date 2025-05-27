@@ -1,6 +1,7 @@
 import pytest
 import pod5frame as p5f
 import polars as pl
+import pod5
 
 
 def test_read_fail() -> None:
@@ -33,9 +34,12 @@ def test_writer(tmp_path):
             writer.write(p5f.TableType())
 
 
-def test_reader_writer_roundtrip():
+def test_reader_writer_roundtrip(tmp_path):
+    output = tmp_path / "test.pod5"
     with (
         p5f.FrameReader("../extra/multi_fast5_zip_v3.pod5") as reader,
-        p5f.FrameWriter("/dev/null") as writer,
+        p5f.FrameWriter(output) as writer,
     ):
         writer.write_signal_tables(reader.signal())
+        writer.write_read_tables(reader.reads())
+        writer.write_run_info_tables(reader.run_info())

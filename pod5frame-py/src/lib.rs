@@ -1,6 +1,6 @@
 use std::{fs::File, path::PathBuf};
 
-use pod5::{dataframe::SignalDataFrame, polars::df, reader::Reader, writer::Writer};
+use pod5::{dataframe::{ReadDataFrame, RunInfoDataFrame, SignalDataFrame}, polars::df, reader::Reader, writer::Writer};
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,
@@ -110,6 +110,32 @@ impl FrameWriter {
         let inner = self.writer.as_mut().unwrap();
         let tables = &mut tables.0;
         let mut guard = inner.guard::<SignalDataFrame>();
+        for table in tables {
+            let table = table.map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
+            guard
+                .write_batch(&table)
+                .map_err(|_| PyException::new_err("Failed to write table"))?;
+        }
+        Ok(())
+    }
+
+    fn write_read_tables(&mut self, tables: &mut ReadIter) -> PyResult<()> {
+        let inner = self.writer.as_mut().unwrap();
+        let tables = &mut tables.0;
+        let mut guard = inner.guard::<ReadDataFrame>();
+        for table in tables {
+            let table = table.map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
+            guard
+                .write_batch(&table)
+                .map_err(|_| PyException::new_err("Failed to write table"))?;
+        }
+        Ok(())
+    }
+
+    fn write_run_info_tables(&mut self, tables: &mut RunInfoIter) -> PyResult<()> {
+        let inner = self.writer.as_mut().unwrap();
+        let tables = &mut tables.0;
+        let mut guard = inner.guard::<RunInfoDataFrame>();
         for table in tables {
             let table = table.map_err(|_| PyException::new_err("Failed to iterate signal data"))?;
             guard
