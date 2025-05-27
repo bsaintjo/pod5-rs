@@ -27,7 +27,6 @@ use polars_arrow::{
 
 pub(crate) mod compatibility;
 pub(crate) mod schema;
-pub(crate) mod signal_read_indexer;
 
 use svb16::decode;
 
@@ -191,7 +190,11 @@ impl ReadDataFrameIter {
 
 impl Iterator for ReadDataFrameIter {
     type Item = Result<ReadDataFrame, Pod5Error>;
-
+#[derive(Debug, thiserror::Error)]
+enum IndexerError {
+    #[error("No read_id column was found.")]
+    NoMinknowUuid,
+}
     /// TODO: Check when Result happens
     fn next(&mut self) -> Option<Self::Item> {
         let df = get_next_df(&self.fields, &mut self.table_reader);
