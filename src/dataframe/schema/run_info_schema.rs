@@ -3,11 +3,17 @@ use std::sync::Arc;
 use polars::prelude::{ArrowDataType, ArrowSchema, ArrowTimeUnit};
 use polars_arrow::datatypes::ArrowSchemaRef;
 
-use super::{map_field, name_field};
+use super::{map_field, name_field, TableSchema};
 
 #[derive(Debug, Clone)]
 pub struct RunInfoSchema {
     inner: ArrowSchemaRef,
+}
+
+impl TableSchema for RunInfoSchema {
+    fn as_schema() -> ArrowSchemaRef {
+        Self::new().inner
+    }
 }
 
 fn timestamp_dt() -> ArrowDataType {

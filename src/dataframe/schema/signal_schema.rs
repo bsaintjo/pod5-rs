@@ -3,7 +3,7 @@ use std::sync::Arc;
 use polars::prelude::{ArrowField, PlSmallStr};
 use polars_arrow::datatypes::{ArrowDataType, ArrowSchemaRef, ExtensionType};
 
-use super::{name_field, name_field_md};
+use super::{name_field, name_field_md, TableSchema};
 
 pub(crate) fn read_id() -> (PlSmallStr, ArrowField) {
     name_field_md(
@@ -36,6 +36,12 @@ fn minknow_vbz() -> ArrowDataType {
 #[derive(Debug, Clone)]
 pub struct SignalSchema {
     inner: ArrowSchemaRef,
+}
+
+impl TableSchema for SignalSchema {
+    fn as_schema() -> ArrowSchemaRef {
+        Self::new().inner
+    }
 }
 
 impl SignalSchema {

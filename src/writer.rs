@@ -2,7 +2,7 @@
 //!
 //! Provides an interface for writing dataframes as POD5 tables.
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     io::{Seek, Write},
     marker::PhantomData,
     sync::Arc,
@@ -12,7 +12,7 @@ use pod5_footer::{FOOTER_MAGIC, TableInfo, footer_generated::minknow::reads_form
 use polars::{
     error::PolarsError,
     frame::DataFrame,
-    prelude::{ArrowField, CompatLevel},
+    prelude::{ArrowField, CompatLevel, PlSmallStr},
 };
 use polars_arrow::{datatypes::Metadata, io::ipc::write::FileWriter, record_batch::RecordBatch};
 use polars_schema::Schema;
@@ -21,8 +21,16 @@ use uuid::Uuid;
 use crate::{
     FILE_SIGNATURE,
     dataframe::{
-        ReadDataFrame, RunInfoDataFrame, SignalDataFrame, compatibility::record_batch_to_compat,
+        ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
+        compatibility::record_batch_to_compat,
+        schema::{
+            TableSchema,
+            reads_schema::ReadSchema,
+            run_info_schema::RunInfoSchema,
+            signal_schema::{self, SignalSchema},
+        },
     },
+    error::Pod5Error,
 };
 
 const SOFTWARE: &str = "pod5-rs";
@@ -77,18 +85,14 @@ impl TableContent {
     }
 }
 
-pub struct TableBatch {
-    batch: RecordBatch,
-    schema: Arc<Schema<ArrowField>>,
-}
-
 pub trait IntoTable {
-    // fn into_record_batch(self) -> TableBatch;
+    type Schema: TableSchema;
     fn as_dataframe(&self) -> &DataFrame;
     fn content_type() -> TableContent;
 }
 
 impl IntoTable for SignalDataFrame {
+    type Schema = SignalSchema;
     fn as_dataframe(&self) -> &DataFrame {
         &self.0
     }
@@ -99,6 +103,7 @@ impl IntoTable for SignalDataFrame {
 }
 
 impl IntoTable for ReadDataFrame {
+    type Schema = ReadSchema;
     fn as_dataframe(&self) -> &DataFrame {
         &self.0
     }
@@ -108,6 +113,7 @@ impl IntoTable for ReadDataFrame {
     }
 }
 impl IntoTable for RunInfoDataFrame {
+    type Schema = RunInfoSchema;
     fn as_dataframe(&self) -> &DataFrame {
         &self.0
     }
@@ -115,17 +121,6 @@ impl IntoTable for RunInfoDataFrame {
     fn content_type() -> TableContent {
         TableContent::RunInfo
     }
-}
-
-// struct TableInfo {
-//     offset: i64,
-//     length: i64,
-//     content_type: ContentType,
-// }
-
-#[derive(Debug, Clone)]
-struct WriteOptions {
-    allow_overwrite: bool,
 }
 
 pub struct Writer<W>
@@ -255,23 +250,6 @@ impl<W: Write + Seek> Writer<W> {
         Ok(footer.len() as u64)
     }
 
-    fn write_dataframe<D: IntoTable>(&mut self, df: &D) -> Result<(), WriteError> {
-        let batch = df
-            .as_dataframe()
-            .iter_chunks(CompatLevel::newest(), false)
-            .next()
-            .unwrap();
-        let batch = record_batch_to_compat(batch).unwrap();
-        let schema = Arc::new(batch.schema().clone());
-
-        let mut writer =
-            FileWriter::try_new(&mut self.writer, schema, None, Default::default()).unwrap();
-        writer.write(&batch, None).unwrap();
-        writer.finish().unwrap();
-        self.end_table(D::content_type().into_content_type())?;
-        Ok(())
-    }
-
     pub fn guard<T: IntoTable>(&mut self) -> TableWriteGuard<'_, W, T> {
         let metadata = self.metadata.clone();
         TableWriteGuard {
@@ -387,25 +365,30 @@ where
     table: PhantomData<T>,
 }
 
-impl<W, T> TableWriteGuard<'_, W, T>
+fn pod5_metadata<S: Into<PlSmallStr>>(file_identifier: S) -> Arc<BTreeMap<PlSmallStr, PlSmallStr>> {
+    let mut metadata = Metadata::new();
+    metadata.insert("MINKNOW:pod5_version".into(), POD5_VERSION.into());
+    metadata.insert("MINKNOW:software".into(), SOFTWARE.into());
+    metadata.insert("MINKNOW:file_identifier".into(), file_identifier.into());
+    Arc::new(metadata)
+}
+
+impl<'a, W, T> TableWriteGuard<'a, W, T>
 where
     W: Write + Seek,
     T: IntoTable,
 {
-    // fn new(inner: &'a mut Writer<W>) -> Self {
-    //     let mut metadata = Metadata::new();
-    //     metadata.insert("MINKNOW:pod5_version".into(), POD5_VERSION.into());
-    //     metadata.insert("MINKNOW:software".into(), SOFTWARE.into());
-    //     metadata.insert(
-    //         "MINKNOW:file_identifier".into(),
-    //         inner.file_identifier.to_string().into(),
-    //     );
-    //     Self {
-    //         inner: Some(TableWriter::PreInit(inner)),
-    //         table: PhantomData,
-    //         metadata: Arc::new(metadata),
-    //     }
-    // }
+    pub fn new(writer: &'a mut Writer<W>) -> Result<Self, WriteError> {
+        let metadata = pod5_metadata(writer.file_identifier.to_string());
+        let mut writer = FileWriter::new(writer, T::Schema::as_schema(), None, Default::default());
+        writer.set_custom_schema_metadata(metadata.clone());
+        writer.start()?;
+        Ok(TableWriteGuard {
+            inner: Some(TableWriter::PostInit(writer)),
+            metadata: metadata,
+            table: PhantomData,
+        })
+    }
 
     // pub fn init_take<F>(&mut self, f: F) -> Result<(), WriteError> where F:
     // Fn(&mut Writer<W>) {     let mut w = match self.inner.take() {
@@ -667,7 +650,8 @@ mod test {
 
         let mut signals = reader.signal_dfs().unwrap();
         let signal_df = signals.next().unwrap().unwrap();
-        writer.write_dataframe(&signal_df).unwrap();
+        writer.with_guard(|g| g.write_batch(&signal_df)).unwrap();
+        // writer.write_dataframe(&signal_df).unwrap();
         // writer
         //     .write_tables_with(|guard| {
         //         // guard.write_table(signal_df.clone())?;
