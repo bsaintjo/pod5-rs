@@ -83,7 +83,7 @@ impl TableType {
 
 #[pyclass]
 struct FrameWriter {
-    path: PathBuf,
+    // path: PathBuf,
     writer: Option<Writer<File>>,
 }
 
@@ -96,7 +96,7 @@ impl FrameWriter {
         let writer = Writer::from_writer(file)
             .map_err(|e| PyException::new_err(format!("Failed to open writer: {e}")))?;
         Ok(Self {
-            path,
+            // path,
             writer: Some(writer),
         })
     }

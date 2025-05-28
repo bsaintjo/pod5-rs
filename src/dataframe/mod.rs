@@ -74,6 +74,8 @@ impl SignalDataFrame {
     }
 
     /// Convert f32 picoamps signal data into i16 ADC
+    // TOOD Make sure to be able to call and still do the conversion for the writer
+    #[allow(dead_code)]
     pub(crate) fn with_adc(mut self, calibration: &Calibration) -> Self {
         let adcs = self.0["read_id"]
             .str()

@@ -8,7 +8,7 @@ use polars::{
 };
 use polars_arrow::{
     array::{
-        Array, BinaryArray, BinaryViewArray, DictionaryArray, FixedSizeBinaryArray, Float32Array,
+        Array, BinaryArray, BinaryViewArray, DictionaryArray, FixedSizeBinaryArray,
         Int16Array, ListArray, MapArray, MutableArray, MutableBinaryArray,
         MutableFixedSizeBinaryArray, MutableListArray, MutablePrimitiveArray, MutableUtf8Array,
         PrimitiveArray, StructArray, TryPush, Utf8Array, Utf8ViewArray,
@@ -174,40 +174,40 @@ fn minknow_vbz_to_large_binary(
             }
 
             // Decompressed signal picoamp data
-            ArrowDataType::LargeList(inner)
-                if matches!(
-                    inner.as_ref(),
-                    ArrowField {
-                        dtype: ArrowDataType::Float32,
-                        ..
-                    }
-                ) =>
-            {
-                let items = chunk
-                    .as_any()
-                    .downcast_ref::<ListArray<i64>>()
-                    .unwrap()
-                    .iter()
-                    .map(|picoamp_arr| {
-                        picoamp_arr.map(|parr| {
-                            let res = parr
-                                .as_any()
-                                .downcast_ref::<Float32Array>()
-                                .unwrap()
-                                .values_iter()
-                                .copied()
-                                .collect::<Vec<_>>();
-                            todo!()
-                        })
-                    });
-                todo!()
-                //     .unwrap()
-                //     .values_iter()
-                //     .map(|s| Some(s.as_bytes().to_vec()));
-                // for a in items {
-                //     acc.push(a);
-                // }
-            }
+            // ArrowDataType::LargeList(inner)
+            //     if matches!(
+            //         inner.as_ref(),
+            //         ArrowField {
+            //             dtype: ArrowDataType::Float32,
+            //             ..
+            //         }
+            //     ) =>
+            // {
+            //     let items = chunk
+            //         .as_any()
+            //         .downcast_ref::<ListArray<i64>>()
+            //         .unwrap()
+            //         .iter()
+            //         .map(|picoamp_arr| {
+            //             picoamp_arr.map(|parr| {
+            //                 let res = parr
+            //                     .as_any()
+            //                     .downcast_ref::<Float32Array>()
+            //                     .unwrap()
+            //                     .values_iter()
+            //                     .copied()
+            //                     .collect::<Vec<_>>();
+            //                 todo!()
+            //             })
+            //         });
+            //     todo!()
+            //     //     .unwrap()
+            //     //     .values_iter()
+            //     //     .map(|s| Some(s.as_bytes().to_vec()));
+            //     // for a in items {
+            //     //     acc.push(a);
+            //     // }
+            // }
             _ => panic!("Invalid datatype for field: {field:?}"),
         };
     });

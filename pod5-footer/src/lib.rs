@@ -1,10 +1,11 @@
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 
 use flatbuffers::{InvalidFlatbuffer, root};
 use footer_generated::minknow::reads_format::{EmbeddedFile, EmbeddedFileArgs, FooterArgs};
 
 use crate::footer_generated::minknow::reads_format::{ContentType, Footer};
 
+#[allow(warnings)] // Ignore warnings from generated file.
 pub mod footer_generated;
 
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
@@ -12,27 +13,33 @@ pub const FOOTER_MAGIC: [u8; 8] = [b'F', b'O', b'O', b'T', b'E', b'R', 0x000, 0x
 
 #[derive(thiserror::Error, Debug)]
 pub enum FooterError {
+    /// Error from the FlatBuffer parser
     #[error("FlatBuffers error: {0}")]
     FlatBuffersError(#[from] InvalidFlatbuffer),
 
+    /// An IO error occurred during parsing of the POD5 file
     #[error("Footer IO Error: {0}")]
     FooterIOError(#[from] std::io::Error),
 
     #[error(
-        "Missing list of embedded files from footer, footer is likely improperly constructed or pod5 is empty"
+        "Missing list of embedded files from footer, footer is likely improperly constructed or POD5 is empty"
     )]
     ContentsMissing,
 
+    /// Failed to find the Signal Table
     #[error("Missing Signal table from POD5")]
     SignalTableMissing,
 
+    /// Failed to find the Read Table
     #[error("Missing Read table from POD5")]
     ReadTableMissing,
 
+    /// Failed to find the Run Info Table
     #[error("Missing Run Info table from POD5")]
     RunInfoTableMissing,
 }
 
+/// Contains information about the location, size, and type of a POD5 Table
 #[derive(Debug)]
 pub struct TableInfo {
     offset: i64,
@@ -80,7 +87,7 @@ impl ReadTable {
         buf: &mut [u8],
     ) -> Result<(), io::Error> {
         let offset = self.0.offset() as u64;
-        let length = self.0.length() as u64;
+        // let length = self.0.length() as u64;
 
         reader.seek(SeekFrom::Start(offset))?;
         reader.read_exact(buf)?;
@@ -98,7 +105,7 @@ impl SignalTable {
         buf: &mut [u8],
     ) -> Result<(), io::Error> {
         let offset = self.0.offset() as u64;
-        let length = self.0.length() as u64;
+        // let length = self.0.length() as u64;
 
         reader.seek(SeekFrom::Start(offset))?;
         reader.read_exact(buf)?;
@@ -117,6 +124,24 @@ pub struct ParsedFooter {
 }
 
 impl ParsedFooter {
+    /// Parse a POD5 Flatbuffer footer from a reader containg data from a POD5
+    /// file.
+    pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, FooterError> {
+        reader.rewind()?;
+        // let file_size = reader.stream_len()?;
+        // let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
+        // let footer_length = footer_length_end - 8;
+        let footer_length = -(FILE_SIGNATURE.len() as i64) + (-16) + (-8);
+        reader.seek(SeekFrom::End(footer_length))?;
+        let mut buf = [0; 8];
+        reader.read_exact(&mut buf)?;
+        let flen = i64::from_le_bytes(buf);
+        reader.seek(SeekFrom::End(footer_length - flen))?;
+        let mut buf = vec![0u8; flen as usize];
+        reader.read_exact(&mut buf)?;
+        Ok(Self { data: buf })
+    }
+
     pub fn footer(&self) -> Result<Footer<'_>, FooterError> {
         Ok(root::<Footer>(&self.data)?)
     }
@@ -164,24 +189,9 @@ impl ParsedFooter {
             FooterError::RunInfoTableMissing,
         )?))
     }
-
-    pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, FooterError> {
-        reader.rewind()?;
-        // let file_size = reader.stream_len()?;
-        // let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
-        // let footer_length = footer_length_end - 8;
-        let footer_length = -(FILE_SIGNATURE.len() as i64) + (-16) + (-8);
-        reader.seek(SeekFrom::End(footer_length))?;
-        let mut buf = [0; 8];
-        reader.read_exact(&mut buf)?;
-        let flen = i64::from_le_bytes(buf);
-        reader.seek(SeekFrom::End(footer_length - flen))?;
-        let mut buf = vec![0u8; flen as usize];
-        reader.read_exact(&mut buf)?;
-        Ok(Self { data: buf })
-    }
 }
 
+/// Build a new POD5 FlatBuffer's footer, useful for writing new POD5 files.
 pub struct FooterBuilder {
     file_identifier: String,
     software: String,
@@ -197,6 +207,8 @@ impl FooterBuilder {
         }
     }
 
+    /// Convert the builder and list of tables into the corresponding flatbuffer
+    /// footer bytes.
     pub fn build_footer(&self, tables: &[TableInfo]) -> Vec<u8> {
         let mut builder = flatbuffers::FlatBufferBuilder::new();
         let mut etables = Vec::with_capacity(tables.len());
@@ -228,6 +240,45 @@ impl FooterBuilder {
 
         builder.finish_minimal(fbtable);
         builder.finished_data().to_vec()
+    }
+
+    /// Write the FlatBuffers footer according to the [POD5 file specification](https://pod5-file-format.readthedocs.io/en/latest/SPECIFICATION.html#combined-file-layout)
+    ///
+    /// This method will write the:
+    /// ```text
+    /// <footer magic: "FOOTER\000\000">
+    /// <footer (padded to 8-byte boundary)>
+    /// <footer length: 8 bytes little-endian signed integer>
+    /// ```
+    /// sections to the writer.
+    ///
+    /// NOTE: I've tried to pad the footer to an 8-byte boundary according to
+    /// the specification, however, I've run into issues with the padded
+    /// footer being parsed by the official `pod5` tools. The flatbuffers
+    /// library may already pad the write. For now, the current iteration is
+    /// correctly parsed by the official `pod5` tools, in case you wonder
+    /// why there isn't any code for padding in the source.
+    pub fn write_footer<W>(&self, tables: &[TableInfo], writer: &mut W) -> Result<(), FooterError>
+    where
+        W: Write,
+    {
+        // Footer magic
+        writer
+            .write_all(&FOOTER_MAGIC)
+            .map_err(FooterError::FooterIOError)?;
+
+        // Footer
+        let footer = self.build_footer(tables);
+        writer
+            .write_all(&footer)
+            .map_err(FooterError::FooterIOError)?;
+
+        let footer_len_bytes = (footer.len() as i64).to_le_bytes();
+        writer
+            .write_all(&footer_len_bytes)
+            .map_err(FooterError::FooterIOError)?;
+
+        Ok(())
     }
 }
 

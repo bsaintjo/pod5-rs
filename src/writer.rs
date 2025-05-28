@@ -12,10 +12,9 @@ use pod5_footer::{FOOTER_MAGIC, TableInfo, footer_generated::minknow::reads_form
 use polars::{
     error::PolarsError,
     frame::DataFrame,
-    prelude::{ArrowField, CompatLevel, PlSmallStr},
+    prelude::{CompatLevel, PlSmallStr},
 };
-use polars_arrow::{datatypes::Metadata, io::ipc::write::FileWriter, record_batch::RecordBatch};
-use polars_schema::Schema;
+use polars_arrow::{datatypes::Metadata, io::ipc::write::FileWriter};
 use uuid::Uuid;
 
 use crate::{
@@ -24,13 +23,10 @@ use crate::{
         ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
         compatibility::record_batch_to_compat,
         schema::{
-            TableSchema,
-            reads_schema::ReadSchema,
-            run_info_schema::RunInfoSchema,
-            signal_schema::{self, SignalSchema},
+            TableSchema, reads_schema::ReadSchema, run_info_schema::RunInfoSchema,
+            signal_schema::SignalSchema,
         },
     },
-    error::Pod5Error,
 };
 
 const SOFTWARE: &str = "pod5-rs";
@@ -133,7 +129,7 @@ where
     file_identifier: Uuid,
     tables: Vec<TableInfo>,
     contents_writtens: HashSet<ContentType>,
-    footer_written: bool,
+    // footer_written: bool,
     metadata: Arc<Metadata>,
 }
 
@@ -155,7 +151,7 @@ impl<W: Write + Seek> Writer<W> {
             section_marker,
             tables: Vec::new(),
             contents_writtens: HashSet::new(),
-            footer_written: false,
+            // footer_written: false,
             file_identifier,
             metadata,
         }

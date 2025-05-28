@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "examples/*",
+    # "examples/*",
     "pod5-arrow",
     "pod5-footer",
     "pod5frame-py",

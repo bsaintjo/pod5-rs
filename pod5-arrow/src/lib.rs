@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use std::io::{Cursor, Read, Seek};
 
 use arrow::{array::LargeBinaryArray, error::ArrowError, ipc::reader::FileReader};
