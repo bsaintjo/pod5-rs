@@ -27,6 +27,7 @@ use polars_arrow::{
 
 pub(crate) mod compatibility;
 pub(crate) mod schema;
+pub(crate) mod signal_read_indexer;
 
 use svb16::decode;
 
