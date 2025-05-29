@@ -1,35 +1,20 @@
 [workspace]
 members = [
+    "pod5",
     # "examples/*",
     "pod5-arrow",
     "pod5-footer",
     "pod5frame-py",
     "svb16",
 ]
+resolver = "3"
 
 [workspace.package]
 authors = ["Brandon Saint-Joh <saint-john@lbl.gov>"]
 edition = "2024"
-
-[package]
-name = "pod5"
-version = "0.1.0"
-edition.workspace = true
-authors.workspace = true
-description = "Interacting with POD5 files in Rust."
-readme = "README.md"
-repository = "https:://github.com/bsaintjo/pod5-rs"
 license = "MIT OR Apache-2.0"
+repository = "https:://github.com/bsaintjo/pod5-rs"
 keywords = ["nanopore", "genomics", "FAST5", "POD5", "sequencing"]
-categories = [
-    "science",
-    "parsing",
-    "data-structures",
-    "compression",
-    "encoding",
-]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace.dependencies]
 # Error handling
@@ -37,6 +22,7 @@ thiserror = "2.0.11"
 
 # Parsing read ids
 uuid = { version = "1.14.0", features = ["v4"] }
+
 log = "0.4.25"
 eyre = "0.6.8"
 flatbuffers = "24.3.25"
@@ -44,37 +30,6 @@ itertools = "0.14.0"
 
 proptest = "1.6.0"
 
+pod5 = { path = "pod5"}
 pod5-footer = { path = "pod5-footer" }
 svb16 = { path = "svb16" }
-
-[dependencies]
-pod5-footer.workspace = true
-svb16.workspace = true
-
-thiserror.workspace = true
-log.workspace = true
-itertools.workspace = true
-
-# Parsing read ids
-uuid.workspace = true
-
-lru = "0.13.0"
-
-# DataFrame API
-polars = { version = "0.48.1", features = [
-    "dtype-full",
-    "dtype-array",
-    # "timezones",
-    "lazy",
-    "list_arithmetic",
-] }
-polars-arrow = { version = "0.48.1", features = ["io_ipc"] }
-polars-schema = "0.48.1"
-
-[dev-dependencies]
-eyre.workspace = true
-doc-comment = "0.3.3"
-env_logger = "0.11.8"
-# Testing small files by memmap
-memmap2 = "0.9.5"
-pretty_assertions = "1.4.1"

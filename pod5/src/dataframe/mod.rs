@@ -349,7 +349,7 @@ mod test {
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let file = File::open(path)?;
         let mut reader = Reader::from_reader(file)?;
         for read_df in reader.read_dfs()?.flatten() {

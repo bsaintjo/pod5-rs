@@ -517,7 +517,7 @@ mod test {
 
     #[test]
     fn test_signal_table_roundtrip() {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
+        let file = File::open("../extra/multi_fast5_zip_v3.pod5").unwrap();
         let mut reader = Reader::from_reader(file).unwrap();
         let buf = Cursor::new(Vec::new());
         let mut reads = reader.signal_dfs().unwrap();
@@ -557,7 +557,7 @@ mod test {
 
     #[test]
     fn test_read_table_roundtrip2() {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
+        let file = File::open("../extra/multi_fast5_zip_v3.pod5").unwrap();
         let mut reader = Reader::from_reader(file).unwrap();
         let buf = Cursor::new(Vec::new());
         let mut reads = reader.read_dfs().unwrap();
@@ -633,7 +633,7 @@ mod test {
 
     #[test]
     fn test_writer_reader_roundtrip() {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
+        let file = File::open("../extra/multi_fast5_zip_v3.pod5").unwrap();
         let mut reader = Reader::from_reader(file).unwrap();
         println!("BEFORE: {:?}", reader.footer.footer());
         let buf = Cursor::new(Vec::new());

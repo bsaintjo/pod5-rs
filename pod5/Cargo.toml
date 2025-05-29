@@ -1,0 +1,49 @@
+[package]
+name = "pod5"
+version = "0.1.0"
+description = "Interacting with POD5 files in Rust."
+readme = "README.md"
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories = [
+    "science",
+    "parsing",
+    "data-structures",
+    "compression",
+    "encoding",
+]
+
+[dependencies]
+pod5-footer.workspace = true
+svb16.workspace = true
+
+thiserror.workspace = true
+log.workspace = true
+itertools.workspace = true
+
+# Parsing read ids
+uuid.workspace = true
+
+lru = "0.13.0"
+
+# DataFrame API
+polars = { version = "0.48.1", features = [
+    "dtype-full",
+    "dtype-array",
+    # "timezones",
+    "lazy",
+    "list_arithmetic",
+] }
+polars-arrow = { version = "0.48.1", features = ["io_ipc"] }
+polars-schema = "0.48.1"
+
+[dev-dependencies]
+eyre.workspace = true
+doc-comment = "0.3.3"
+env_logger = "0.11.8"
+# Testing small files by memmap
+memmap2 = "0.9.5"
+pretty_assertions = "1.4.1"

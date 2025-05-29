@@ -76,7 +76,7 @@ mod test {
 
     #[test]
     fn test_signal_schema() {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let mut file = File::open(path).unwrap();
         let mut reader = Reader::from_reader(&mut file).unwrap();
         let signal_df_iter = reader.signal_dfs().unwrap();

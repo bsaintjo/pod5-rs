@@ -10,7 +10,7 @@ pub mod writer;
 const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 
 #[cfg(doctest)]
-doc_comment::doctest!("../README.md", readme);
+doc_comment::doctest!("../../README.md", readme);
 
 #[cfg(test)]
 mod tests {
@@ -27,7 +27,7 @@ mod tests {
 
     #[test]
     fn test_pod5() -> eyre::Result<()> {
-        let path = "extra/multi_fast5_zip_v0.pod5";
+        let path = "../extra/multi_fast5_zip_v0.pod5";
         let reader = File::open(path)?;
 
         let mmap = unsafe { MmapOptions::new().map(&reader)? };
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_check_signature() -> eyre::Result<()> {
-        let path = "extra/multi_fast5_zip_v0.pod5";
+        let path = "../extra/multi_fast5_zip_v0.pod5";
         let mut file = File::open(path)?;
         assert!(check_signature(&file)?);
         file.seek(SeekFrom::End(-8))?;

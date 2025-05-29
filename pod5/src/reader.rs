@@ -75,7 +75,7 @@ mod test {
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5")?;
+        let file = File::open("../extra/multi_fast5_zip_v3.pod5")?;
         let mut reader = Reader::from_reader(file)?;
 
         let mut reads = reader.read_dfs()?;
