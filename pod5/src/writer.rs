@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use pod5_footer::{FOOTER_MAGIC, TableInfo, footer_generated::minknow::reads_format::ContentType};
+use pod5_format::{FOOTER_MAGIC, TableInfo, footer_generated::minknow::reads_format::ContentType};
 use polars::{
     error::PolarsError,
     frame::DataFrame,
@@ -303,7 +303,7 @@ impl<W: Write + Seek> Writer<W> {
     }
 
     fn build_footer(&self) -> Vec<u8> {
-        pod5_footer::FooterBuilder::new(
+        pod5_format::FooterBuilder::new(
             self.file_identifier.to_string(),
             SOFTWARE.to_string(),
             POD5_VERSION.to_string(),

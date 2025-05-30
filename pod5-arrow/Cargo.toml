@@ -5,10 +5,9 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-# pod5 = { path = ".." }
 arrow = "54.2.0"
 svb16.workspace = true
-pod5-footer.workspace = true
+pod5-format.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 

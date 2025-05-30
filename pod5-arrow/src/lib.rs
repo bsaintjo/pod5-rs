@@ -3,7 +3,7 @@ use std::io::{Cursor, Read, Seek};
 
 use arrow::{array::LargeBinaryArray, error::ArrowError, ipc::reader::FileReader};
 use extract::ArrowExtract;
-use pod5_footer::ParsedFooter;
+use pod5_format::ParsedFooter;
 use svb16::decode;
 
 mod extract;
@@ -114,7 +114,7 @@ mod test {
         FixedSizeBinaryArray, Int16DictionaryArray, LargeBinaryArray, ListArray, StringArray,
         UInt32Array, UInt64Array,
     };
-    use pod5_footer::ParsedFooter;
+    use pod5_format::ParsedFooter;
     use svb16::decode;
 
     use super::*;

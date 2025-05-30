@@ -17,7 +17,7 @@ categories = [
 ]
 
 [dependencies]
-pod5-footer.workspace = true
+pod5-format.workspace = true
 svb16.workspace = true
 
 thiserror.workspace = true

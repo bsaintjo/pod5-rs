@@ -3,7 +3,7 @@ members = [
     "pod5",
     # "examples/*",
     "pod5-arrow",
-    "pod5-footer",
+    "pod5-format",
     "pod5frame-py",
     "svb16",
 ]
@@ -31,5 +31,5 @@ itertools = "0.14.0"
 proptest = "1.6.0"
 
 pod5 = { path = "pod5"}
-pod5-footer = { path = "pod5-footer" }
+pod5-format = { path = "pod5-format" }
 svb16 = { path = "svb16" }

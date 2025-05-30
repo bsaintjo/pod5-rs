@@ -1,43 +1,16 @@
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
-use flatbuffers::{InvalidFlatbuffer, root};
-use footer_generated::minknow::reads_format::{EmbeddedFile, EmbeddedFileArgs, FooterArgs};
+use flatbuffers::root;
+use footer_generated::minknow::reads_format::{
+    ContentType, EmbeddedFile, EmbeddedFileArgs, Footer, FooterArgs,
+};
 
-use crate::footer_generated::minknow::reads_format::{ContentType, Footer};
+use crate::{FILE_SIGNATURE, FormatError, error::FooterError};
 
 #[allow(warnings)] // Ignore warnings from generated file.
 pub mod footer_generated;
 
-const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
 pub const FOOTER_MAGIC: [u8; 8] = [b'F', b'O', b'O', b'T', b'E', b'R', 0x000, 0x000];
-
-#[derive(thiserror::Error, Debug)]
-pub enum FooterError {
-    /// Error from the FlatBuffer parser
-    #[error("FlatBuffers error: {0}")]
-    FlatBuffersError(#[from] InvalidFlatbuffer),
-
-    /// An IO error occurred during parsing of the POD5 file
-    #[error("Footer IO Error: {0}")]
-    FooterIOError(#[from] std::io::Error),
-
-    #[error(
-        "Missing list of embedded files from footer, footer is likely improperly constructed or POD5 is empty"
-    )]
-    ContentsMissing,
-
-    /// Failed to find the Signal Table
-    #[error("Missing Signal table from POD5")]
-    SignalTableMissing,
-
-    /// Failed to find the Read Table
-    #[error("Missing Read table from POD5")]
-    ReadTableMissing,
-
-    /// Failed to find the Run Info Table
-    #[error("Missing Run Info table from POD5")]
-    RunInfoTableMissing,
-}
 
 /// Contains information about the location, size, and type of a POD5 Table
 #[derive(Debug)]
@@ -126,19 +99,27 @@ pub struct ParsedFooter {
 impl ParsedFooter {
     /// Parse a POD5 Flatbuffer footer from a reader containg data from a POD5
     /// file.
-    pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, FooterError> {
-        reader.rewind()?;
+    pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, FormatError> {
+        reader.rewind().map_err(FooterError::FooterIOError)?;
         // let file_size = reader.stream_len()?;
         // let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
         // let footer_length = footer_length_end - 8;
         let footer_length = -(FILE_SIGNATURE.len() as i64) + (-16) + (-8);
-        reader.seek(SeekFrom::End(footer_length))?;
+        reader
+            .seek(SeekFrom::End(footer_length))
+            .map_err(FooterError::FooterIOError)?;
         let mut buf = [0; 8];
-        reader.read_exact(&mut buf)?;
+        reader
+            .read_exact(&mut buf)
+            .map_err(FooterError::FooterIOError)?;
         let flen = i64::from_le_bytes(buf);
-        reader.seek(SeekFrom::End(footer_length - flen))?;
+        reader
+            .seek(SeekFrom::End(footer_length - flen))
+            .map_err(FooterError::FooterIOError)?;
         let mut buf = vec![0u8; flen as usize];
-        reader.read_exact(&mut buf)?;
+        reader
+            .read_exact(&mut buf)
+            .map_err(FooterError::FooterIOError)?;
         Ok(Self { data: buf })
     }
 
@@ -150,7 +131,7 @@ impl ParsedFooter {
         &self,
         content_type: ContentType,
         err: FooterError,
-    ) -> Result<TableInfo, FooterError> {
+    ) -> Result<TableInfo, FormatError> {
         let footer = self.footer()?;
         let contents = footer.contents().ok_or(FooterError::ContentsMissing)?;
         let mut efile = None;
@@ -169,21 +150,21 @@ impl ParsedFooter {
         })
     }
 
-    pub fn read_table(&self) -> Result<ReadTable, FooterError> {
+    pub fn read_table(&self) -> Result<ReadTable, FormatError> {
         Ok(ReadTable(self.find_table(
             ContentType::ReadsTable,
             FooterError::ReadTableMissing,
         )?))
     }
 
-    pub fn signal_table(&self) -> Result<SignalTable, FooterError> {
+    pub fn signal_table(&self) -> Result<SignalTable, FormatError> {
         Ok(SignalTable(self.find_table(
             ContentType::SignalTable,
             FooterError::SignalTableMissing,
         )?))
     }
 
-    pub fn run_info_table(&self) -> Result<RunInfoTable, FooterError> {
+    pub fn run_info_table(&self) -> Result<RunInfoTable, FormatError> {
         Ok(RunInfoTable(self.find_table(
             ContentType::RunInfoTable,
             FooterError::RunInfoTableMissing,
@@ -258,7 +239,7 @@ impl FooterBuilder {
     /// library may already pad the write. For now, the current iteration is
     /// correctly parsed by the official `pod5` tools, in case you wonder
     /// why there isn't any code for padding in the source.
-    pub fn write_footer<W>(&self, tables: &[TableInfo], writer: &mut W) -> Result<(), FooterError>
+    pub fn write_footer<W>(&self, tables: &[TableInfo], writer: &mut W) -> Result<(), FormatError>
     where
         W: Write,
     {

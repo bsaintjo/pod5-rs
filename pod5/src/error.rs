@@ -5,8 +5,8 @@ use polars::error::PolarsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Pod5Error {
-    #[error("Footer Error: {0}")]
-    FooterError(#[from] pod5_footer::FooterError),
+    #[error("POD5 Format Error Error: {0}")]
+    FormatError(#[from] pod5_format::FormatError),
 
     /// The signature at the beginning or ending of the file wasn't able to be
     /// verified. This may mean that the file was corrupted or incorrectly
