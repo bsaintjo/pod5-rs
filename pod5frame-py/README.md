@@ -1,12 +1,12 @@
-# DataFrames for POD5 files
+# DataFrames for POD5 files in Python
 
-Explore POD5 files using DataFrames from polars. Not official.
+Explore POD5 files using DataFrames from polars.
 
 This provides a Python module bindings to the `pod5` rust crate, so we can re-use those functions in Python.
 
 ## Installation
 
-### Build wheel
+### Build wheel locally
 
 Currently being built with Python 3.11 and Rust 1.85
 
@@ -55,7 +55,7 @@ Output
 
 ```text
 ┌─────────────────────────────────┬───────────────────┬─────────┐
-│ read_id                    ┆ signal       ┆ samples │
+│ read_id                         ┆ signal            ┆ samples │
 │ ---                             ┆ ---               ┆ ---     │
 │ str                             ┆ list[i16]         ┆ u32     │
 ╞═════════════════════════════════╪═══════════════════╪═════════╡
@@ -74,7 +74,7 @@ Output
 
 ## Why use this package?
 
-- If you are familiar with polars and want to explore POD5s with a DataFrame API. If you prefer pandas you can convert polars DataFrames using `.to_pandas()`.
+- If you are familiar with polars/DataFrame API, this package makes it easy to pull out any POD5 data into a polars DataFrame.
 
 ## Why not use this package?
 
