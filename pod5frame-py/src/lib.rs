@@ -1,18 +1,13 @@
 use std::{fs::File, path::PathBuf};
 
-use pod5::{
-    dataframe::SignalDataFrame,
-    polars::df,
-    reader::Reader,
-    svb16::{decode, encode},
-    writer::Writer,
-};
+use pod5::{dataframe::SignalDataFrame, polars::df, reader::Reader, writer::Writer};
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,
     py_run,
 };
 use pyo3_polars::PyDataFrame;
+use svb16::{decode, encode};
 
 /// An iterator over the SignalTable, yielding polars DataFrames
 #[pyclass]
@@ -88,7 +83,7 @@ impl TableType {
 
 #[pyclass]
 struct FrameWriter {
-    path: PathBuf,
+    // path: PathBuf,
     writer: Option<Writer<File>>,
 }
 
@@ -101,7 +96,7 @@ impl FrameWriter {
         let writer = Writer::from_writer(file)
             .map_err(|e| PyException::new_err(format!("Failed to open writer: {e}")))?;
         Ok(Self {
-            path,
+            // path,
             writer: Some(writer),
         })
     }

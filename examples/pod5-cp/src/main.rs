@@ -28,21 +28,21 @@ fn main() {
         let df = df.unwrap();
         guard.write_batch(&df).unwrap();
     }
-    guard.finish2().unwrap();
+    guard.finish().unwrap();
 
     let mut guard = writer.guard::<ReadDataFrame>();
     for df in reader.read_dfs().unwrap() {
         let df = df.unwrap();
         guard.write_batch(&df).unwrap();
     }
-    guard.finish2().unwrap();
+    guard.finish().unwrap();
 
     let mut guard = writer.guard::<RunInfoDataFrame>();
     for df in reader.run_info_dfs().unwrap() {
         let df = df.unwrap();
         guard.write_batch(&df).unwrap();
     }
-    guard.finish2().unwrap();
+    guard.finish().unwrap();
 
     writer.finish().unwrap();
 }

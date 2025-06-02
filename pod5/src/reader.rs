@@ -1,22 +1,12 @@
 //! Reading from a POD5 file.
 use std::io::{Read, Seek, SeekFrom};
 
+use pod5_format::{ParsedFooter, valid_signature};
+
 use crate::{
     dataframe::{ReadDataFrameIter, RunInfoDataFrameIter, SignalDataFrameIter},
     error::Pod5Error,
-    footer::ParsedFooter,
 };
-
-const FILE_SIGNATURE: [u8; 8] = [0x8b, b'P', b'O', b'D', b'\r', b'\n', 0x1a, b'\n'];
-
-fn valid_signature<R>(mut reader: R) -> Result<bool, std::io::Error>
-where
-    R: Read + Seek,
-{
-    let mut buf = [0u8; 8];
-    reader.read_exact(&mut buf)?;
-    Ok(buf == FILE_SIGNATURE)
-}
 
 pub struct Reader<R> {
     pub(crate) reader: R,
@@ -74,7 +64,7 @@ mod test {
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5")?;
+        let file = File::open("../extra/multi_fast5_zip_v3.pod5")?;
         let mut reader = Reader::from_reader(file)?;
 
         let mut reads = reader.read_dfs()?;

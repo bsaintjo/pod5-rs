@@ -3,11 +3,17 @@ use std::sync::Arc;
 use polars::prelude::{ArrowDataType, ArrowSchema, ArrowTimeUnit};
 use polars_arrow::datatypes::ArrowSchemaRef;
 
-use super::{map_field, name_field};
+use super::{map_field, name_field, TableSchema};
 
 #[derive(Debug, Clone)]
 pub struct RunInfoSchema {
     inner: ArrowSchemaRef,
+}
+
+impl TableSchema for RunInfoSchema {
+    fn as_schema() -> ArrowSchemaRef {
+        Self::new().inner
+    }
 }
 
 fn timestamp_dt() -> ArrowDataType {
@@ -55,7 +61,7 @@ mod test_super {
 
     #[test]
     fn test_run_info_schema() {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let mut file = File::open(path).unwrap();
         let mut reader = Reader::from_reader(&mut file).unwrap();
         let signal_df_iter = reader.run_info_dfs().unwrap();

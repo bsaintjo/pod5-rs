@@ -5,29 +5,11 @@
 [stability-badge]: https://img.shields.io/badge/stability-experimental-orange.svg
 [stability-url]: https://github.com/mkenney/software-guides/blob/master/STABILITY-BADGES.md#experimental
 
-Experimental library for interacting with [POD5 files](https://github.com/nanoporetech/pod5-file-format). While this repository has focused on reading POD5 files using Rust and `polars`, there are `arrow`-only and Python bindings available as well.
+Experimental library for interacting with [POD5 files](https://github.com/nanoporetech/pod5-file-format) using the Rust programming language. This repository provides multiple crates covering different portions of the POD5 file format and APIs for reading and writing.
 
-## Installation
+## Getting Started
 
-To use this crate in your project, run:
-
-```bash
-cargo add --git https://github.com/bsaintjo/pod5-rs
-```
-
-### Python version
-
-If you are interested in the Python package, checkout [here](./pod5frame-py/README.md).
-
-## Motivation: Dataframes for POD5 files
-
-Major goals here are to explore combining POD5 files with `polars` DataFrame API. A POD5 file is essentially multiple Apache Arrow files stitched together using flatbuffers. Since `polars` has native support for Apache Arrow files, we should be able to treat the POD5 Arrow components as Dataframes and leverage all the API provided by `polars` to manipulate these.
-
-This library performs the necessary casting in order to use `polars` on POD5 Apache Arrow contents. It provides a few convience functions for common operations, such as decompressing signal data, converting read ids into strings, etc. However, `polars` is re-exported to give full access to the DataFrame API.
-
-## Example: Print read IDs, signal data, and number of samples
-
-### Note: API is experimental and expect breaking changes. If there you are interested in using or having additional features, feel free to contact
+### Example with the `polars` integration
 
 ```rust
 
@@ -50,7 +32,7 @@ Output:
 ```text
 SignalDataFrame(shape: (22, 3)
 ┌─────────────────────────────────┬─────────────────────────────────┬─────────┐
-│ read_id                    ┆ signal                     ┆ samples │
+│ read_id                         ┆ signal                          ┆ samples │
 │ ---                             ┆ ---                             ┆ ---     │
 │ str                             ┆ list[f32]                       ┆ u32     │
 ╞═════════════════════════════════╪═════════════════════════════════╪═════════╡
@@ -68,32 +50,37 @@ SignalDataFrame(shape: (22, 3)
 └─────────────────────────────────┴─────────────────────────────────┴─────────┘)
 ```
 
-## Why use this
+## Installation
 
-- Use this if you are familiar with DataFrame APIs (pandas, polars, etc.)
-- Want to export POD5 into different formats
-  - Since we export the full polars API, its relatively straightforward to output your DataFrame as JSON or serde supported formats
+The crates will eventually be added to `crates.io`. To use any of these crates now, you can use `cargo`'s git parameter to add any of the subcrates to your project. To add the `pod5` to do something similar in the example above, run:
 
-## Why not use this
+```bash
+cargo add --git https://github.com/bsaintjo/pod5-rs pod5
+```
 
-- This crate is a work in progress. If there is a feature you are interested in, please open a GitHub issue.
+Change `pod5` to any of the crates mentioned in the [Crates](#crates) section for other access.
 
-## Roadmap
+## Crates
 
-- [ ] Python integration via maturin and PyO3
-- [ ] Support for read indexing
-- [ ] VBZ de/compression
-  - [x] Decompression
-  - [ ] Compression (works but isn't exact?)
-- [ ] Optimize decompression
-  - [ ] Switch Zig-zag encoding dependency
-  - [ ] Try `varint-rs`, `varint-simd`, etc.
+### `pod5`
 
-## Known issues
+Reading and writing of POD5 files. Currently focused on using `polars` DataFrame API with further plans to incorporate others.
 
-### Compressed output differs, but uncompressed output is the same
+### `pod5frame`
 
-If you are trying validate this library and compare the compressed array from here to the official implementation, you will find the arrays aren't exactly the same. However, from my preliminary tests, the decompressed output should match. I believe this issue is due to how the buffer is allocated, as this implementation iteratively builds up the compressed array, whereas the official implementation preallocates the array based on expectations on the size of the compressed output. If you find otherwise, or would like to help on this front, please open a GitHub issue.
+Exports the Polars POD5 DataFrame API as a Python package. To use this in Python and install in a Python virtual environment, please read the [Python installation instructions](./pod5frame-py/README.md#installation).
+
+### `pod5-format`
+
+Crate for dealing with non-internal file format details, including file signature and the FlatBuffers footer. Useful for writing and reusing the code with other Arrow handling library or implementations.
+
+### `pod5-arrow`
+
+Experimental implementation for using reading/writing POD5 files with the official Rust Apache Arrow crate. Maybe useful if you are interested in implementing your own POD5 reader/writer and want to see how to use some of the components in this workspace.
+
+### `svb16`
+
+This crate allows for encoding and decoding of nanopore signal data in FAST5/POD5 which are usually compressed in a custom schema.
 
 ## License
 

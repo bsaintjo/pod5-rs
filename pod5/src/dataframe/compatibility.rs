@@ -8,7 +8,7 @@ use polars::{
 };
 use polars_arrow::{
     array::{
-        Array, BinaryArray, BinaryViewArray, DictionaryArray, FixedSizeBinaryArray, Float32Array,
+        Array, BinaryArray, BinaryViewArray, DictionaryArray, FixedSizeBinaryArray,
         Int16Array, ListArray, MapArray, MutableArray, MutableBinaryArray,
         MutableFixedSizeBinaryArray, MutableListArray, MutablePrimitiveArray, MutableUtf8Array,
         PrimitiveArray, StructArray, TryPush, Utf8Array, Utf8ViewArray,
@@ -18,9 +18,10 @@ use polars_arrow::{
     record_batch::RecordBatchT,
 };
 use polars_schema::Schema;
+use svb16;
 use uuid::Uuid;
 
-use crate::{dataframe::schema::map_field, svb16};
+use crate::dataframe::schema::map_field;
 
 /// Convert Arrow arrays into polars Series. This works for almost all arrays
 /// except the Extensions. In order for properly handle Extension types, the
@@ -109,7 +110,6 @@ impl FieldArray {
     }
 }
 
-
 /// Converts a signal array into a LargeBinary array.
 ///
 /// The signal can be a list[f32], list[i16], or list[u8](?) depending on
@@ -174,40 +174,40 @@ fn minknow_vbz_to_large_binary(
             }
 
             // Decompressed signal picoamp data
-            ArrowDataType::LargeList(inner)
-                if matches!(
-                    inner.as_ref(),
-                    ArrowField {
-                        dtype: ArrowDataType::Float32,
-                        ..
-                    }
-                ) =>
-            {
-                let items = chunk
-                    .as_any()
-                    .downcast_ref::<ListArray<i64>>()
-                    .unwrap()
-                    .iter()
-                    .map(|picoamp_arr| {
-                        picoamp_arr.map(|parr| {
-                            let res = parr
-                                .as_any()
-                                .downcast_ref::<Float32Array>()
-                                .unwrap()
-                                .values_iter()
-                                .copied()
-                                .collect::<Vec<_>>();
-                            todo!()
-                        })
-                    });
-                todo!()
-                //     .unwrap()
-                //     .values_iter()
-                //     .map(|s| Some(s.as_bytes().to_vec()));
-                // for a in items {
-                //     acc.push(a);
-                // }
-            }
+            // ArrowDataType::LargeList(inner)
+            //     if matches!(
+            //         inner.as_ref(),
+            //         ArrowField {
+            //             dtype: ArrowDataType::Float32,
+            //             ..
+            //         }
+            //     ) =>
+            // {
+            //     let items = chunk
+            //         .as_any()
+            //         .downcast_ref::<ListArray<i64>>()
+            //         .unwrap()
+            //         .iter()
+            //         .map(|picoamp_arr| {
+            //             picoamp_arr.map(|parr| {
+            //                 let res = parr
+            //                     .as_any()
+            //                     .downcast_ref::<Float32Array>()
+            //                     .unwrap()
+            //                     .values_iter()
+            //                     .copied()
+            //                     .collect::<Vec<_>>();
+            //                 todo!()
+            //             })
+            //         });
+            //     todo!()
+            //     //     .unwrap()
+            //     //     .values_iter()
+            //     //     .map(|s| Some(s.as_bytes().to_vec()));
+            //     // for a in items {
+            //     //     acc.push(a);
+            //     // }
+            // }
             _ => panic!("Invalid datatype for field: {field:?}"),
         };
     });
@@ -324,7 +324,6 @@ pub(crate) fn record_batch_to_compat(
     for ((name, field), array) in schema.iter().zip(chunks.into_iter()) {
         log::debug!("record_btach_to_compat, field {field:?}");
         let farr = match (name.as_str(), &field.dtype) {
-
             // Signal in the ReadTable (list(u64))
             ("signal", ArrowDataType::LargeList(x))
                 if matches!(x.dtype(), ArrowDataType::UInt64) =>
@@ -441,7 +440,6 @@ fn large_list_to_map(
         arr: map_array.to_boxed(),
     })
 }
-
 
 fn utf8view_to_utf8(
     field: &ArrowField,

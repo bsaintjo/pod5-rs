@@ -1,14 +1,12 @@
 //! Error types.
 use std::io;
 
-use flatbuffers::InvalidFlatbuffer;
 use polars::error::PolarsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Pod5Error {
-    /// Reason why flatbuffers failed to parse the footer
-    #[error("Failed to parse footer, {0}")]
-    FooterParserFailure(#[from] InvalidFlatbuffer),
+    #[error("POD5 Format Error Error: {0}")]
+    FormatError(#[from] pod5_format::FormatError),
 
     /// The signature at the beginning or ending of the file wasn't able to be
     /// verified. This may mean that the file was corrupted or incorrectly
@@ -19,7 +17,9 @@ pub enum Pod5Error {
     #[error("{0}")]
     IOError(#[from] io::Error),
 
-    #[error("Missing list of embedded files from footer, footer is likely improperly constructed or pod5 is empty")]
+    #[error(
+        "Missing list of embedded files from footer, footer is likely improperly constructed or pod5 is empty"
+    )]
     ContentsMissing,
 
     #[error("Missing Signal table from POD5")]

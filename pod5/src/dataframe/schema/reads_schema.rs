@@ -3,14 +3,20 @@ use std::sync::Arc;
 use polars::prelude::{ArrowDataType, ArrowField};
 use polars_arrow::datatypes::{ArrowSchema, ArrowSchemaRef};
 
-use super::{dictionary_field, name_field, signal_schema::read_id};
+use super::{TableSchema, dictionary_field, name_field, signal_schema::read_id};
 
 #[derive(Debug, Clone)]
-pub struct ReadsSchema {
+pub struct ReadSchema {
     pub(crate) inner: ArrowSchemaRef,
 }
 
-impl ReadsSchema {
+impl TableSchema for ReadSchema {
+    fn as_schema() -> ArrowSchemaRef {
+        Self::new().inner
+    }
+}
+
+impl ReadSchema {
     pub fn new() -> Self {
         let inner = Arc::new(ArrowSchema::from_iter([
             read_id(),
@@ -60,12 +66,12 @@ mod test_super {
 
     #[test]
     fn test_run_info_schema() {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let mut file = File::open(path).unwrap();
         let mut reader = Reader::from_reader(&mut file).unwrap();
         let signal_df_iter = reader.read_dfs().unwrap();
         pretty_assertions::assert_eq!(
-            *ReadsSchema::new().into_inner(),
+            *ReadSchema::new().into_inner(),
             signal_df_iter.table_reader.schema().clone()
         );
     }

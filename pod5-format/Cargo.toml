@@ -1,15 +1,12 @@
 [package]
-name = "pod5-arrow"
+name = "pod5-format"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-arrow = "54.2.0"
-svb16.workspace = true
-pod5-format.workspace = true
+flatbuffers = "24.3.25"
 thiserror.workspace = true
-uuid.workspace = true
 
 [dev-dependencies]
 eyre.workspace = true

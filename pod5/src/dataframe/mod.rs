@@ -22,14 +22,15 @@ use polars::{
 };
 use polars_arrow::{
     datatypes::Field,
-    io::ipc::read::{read_file_metadata, FileReader},
+    io::ipc::read::{FileReader, read_file_metadata},
 };
 
 pub(crate) mod compatibility;
 pub(crate) mod schema;
-pub(crate) mod signal_read_indexer;
 
-use crate::{error::Pod5Error, svb16::decode};
+use svb16::decode;
+
+use crate::error::Pod5Error;
 
 /// DataFrame wrapper for the POD5 Signal table.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -73,6 +74,8 @@ impl SignalDataFrame {
     }
 
     /// Convert f32 picoamps signal data into i16 ADC
+    // TOOD Make sure to be able to call and still do the conversion for the writer
+    #[allow(dead_code)]
     pub(crate) fn with_adc(mut self, calibration: &Calibration) -> Self {
         let adcs = self.0["read_id"]
             .str()
@@ -189,7 +192,6 @@ impl ReadDataFrameIter {
 
 impl Iterator for ReadDataFrameIter {
     type Item = Result<ReadDataFrame, Pod5Error>;
-
     /// TODO: Check when Result happens
     fn next(&mut self) -> Option<Self::Item> {
         let df = get_next_df(&self.fields, &mut self.table_reader);
@@ -254,18 +256,6 @@ pub(crate) fn get_next_df(
             })
             .map_err(Pod5Error::PolarsError)
     })
-    // if let Some(chunk) = Some(table_reader.next()?.unwrap()) {
-    //     let mut acc = Vec::with_capacity(fields.len());
-    //     for (arr, f) in chunk.into_arrays().into_iter().zip(fields.iter()) {
-    //         let s = compatibility::array_to_series(f, arr);
-    //         acc.push(s);
-    //     }
-
-    //     let df = polars::prelude::DataFrame::from_iter(acc);
-    //     Some(Ok(df))
-    // } else {
-    //     None
-    // }
 }
 
 pub(crate) type TableReader = (Vec<Field>, FileReader<Cursor<Vec<u8>>>);
@@ -359,7 +349,7 @@ mod test {
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let file = File::open(path)?;
         let mut reader = Reader::from_reader(file)?;
         for read_df in reader.read_dfs()?.flatten() {

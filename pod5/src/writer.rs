@@ -2,34 +2,35 @@
 //!
 //! Provides an interface for writing dataframes as POD5 tables.
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     io::{Seek, Write},
     marker::PhantomData,
     sync::Arc,
 };
 
+use pod5_format::{FOOTER_MAGIC, TableInfo, footer_generated::minknow::reads_format::ContentType};
 use polars::{
     error::PolarsError,
     frame::DataFrame,
-    prelude::{ArrowField, CompatLevel},
+    prelude::{CompatLevel, PlSmallStr},
 };
-use polars_arrow::{datatypes::Metadata, io::ipc::write::FileWriter, record_batch::RecordBatch};
-use polars_schema::Schema;
+use polars_arrow::{datatypes::Metadata, io::ipc::write::FileWriter};
 use uuid::Uuid;
 
 use crate::{
-    dataframe::{
-        compatibility::record_batch_to_compat, ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
-    },
-    footer::footer_generated::minknow::reads_format::{
-        ContentType, EmbeddedFile, EmbeddedFileArgs, Footer, FooterArgs,
-    },
     FILE_SIGNATURE,
+    dataframe::{
+        ReadDataFrame, RunInfoDataFrame, SignalDataFrame,
+        compatibility::record_batch_to_compat,
+        schema::{
+            TableSchema, reads_schema::ReadSchema, run_info_schema::RunInfoSchema,
+            signal_schema::SignalSchema,
+        },
+    },
 };
 
 const SOFTWARE: &str = "pod5-rs";
 const POD5_VERSION: &str = "0.0.40";
-const FOOTER_MAGIC: [u8; 8] = [b'F', b'O', b'O', b'T', b'E', b'R', 0x000, 0x000];
 
 #[derive(Debug, thiserror::Error)]
 pub enum WriteError {
@@ -80,18 +81,14 @@ impl TableContent {
     }
 }
 
-pub struct TableBatch {
-    batch: RecordBatch,
-    schema: Arc<Schema<ArrowField>>,
-}
-
 pub trait IntoTable {
-    // fn into_record_batch(self) -> TableBatch;
+    type Schema: TableSchema;
     fn as_dataframe(&self) -> &DataFrame;
     fn content_type() -> TableContent;
 }
 
 impl IntoTable for SignalDataFrame {
+    type Schema = SignalSchema;
     fn as_dataframe(&self) -> &DataFrame {
         &self.0
     }
@@ -102,6 +99,7 @@ impl IntoTable for SignalDataFrame {
 }
 
 impl IntoTable for ReadDataFrame {
+    type Schema = ReadSchema;
     fn as_dataframe(&self) -> &DataFrame {
         &self.0
     }
@@ -111,6 +109,7 @@ impl IntoTable for ReadDataFrame {
     }
 }
 impl IntoTable for RunInfoDataFrame {
+    type Schema = RunInfoSchema;
     fn as_dataframe(&self) -> &DataFrame {
         &self.0
     }
@@ -118,17 +117,6 @@ impl IntoTable for RunInfoDataFrame {
     fn content_type() -> TableContent {
         TableContent::RunInfo
     }
-}
-
-struct TableInfo {
-    offset: i64,
-    length: i64,
-    content_type: ContentType,
-}
-
-#[derive(Debug, Clone)]
-struct WriteOptions {
-    allow_overwrite: bool,
 }
 
 pub struct Writer<W>
@@ -141,7 +129,7 @@ where
     file_identifier: Uuid,
     tables: Vec<TableInfo>,
     contents_writtens: HashSet<ContentType>,
-    footer_written: bool,
+    // footer_written: bool,
     metadata: Arc<Metadata>,
 }
 
@@ -163,7 +151,7 @@ impl<W: Write + Seek> Writer<W> {
             section_marker,
             tables: Vec::new(),
             contents_writtens: HashSet::new(),
-            footer_written: false,
+            // footer_written: false,
             file_identifier,
             metadata,
         }
@@ -216,11 +204,8 @@ impl<W: Write + Seek> Writer<W> {
         self.write_section_marker().unwrap();
         let offset = self.position as i64;
         let length = new_position as i64 - self.position as i64;
-        self.tables.push(TableInfo {
-            offset,
-            length,
-            content_type,
-        });
+        self.tables
+            .push(TableInfo::new(offset, length, content_type));
         self.position = self.writer.stream_position().unwrap();
         Ok(())
     }
@@ -259,23 +244,6 @@ impl<W: Write + Seek> Writer<W> {
             .map_err(|_| WriteError::FailedToWriteFooterLengthBytes)?;
 
         Ok(footer.len() as u64)
-    }
-
-    fn write_dataframe<D: IntoTable>(&mut self, df: &D) -> Result<(), WriteError> {
-        let batch = df
-            .as_dataframe()
-            .iter_chunks(CompatLevel::newest(), false)
-            .next()
-            .unwrap();
-        let batch = record_batch_to_compat(batch).unwrap();
-        let schema = Arc::new(batch.schema().clone());
-
-        let mut writer =
-            FileWriter::try_new(&mut self.writer, schema, None, Default::default()).unwrap();
-        writer.write(&batch, None).unwrap();
-        writer.finish().unwrap();
-        self.end_table(D::content_type().into_content_type())?;
-        Ok(())
     }
 
     pub fn guard<T: IntoTable>(&mut self) -> TableWriteGuard<'_, W, T> {
@@ -330,41 +298,17 @@ impl<W: Write + Seek> Writer<W> {
         }
         let mut guard = self.guard::<T>();
         closure(&mut guard)?;
-        guard.finish2()?;
+        guard.finish()?;
         Ok(())
     }
 
     fn build_footer(&self) -> Vec<u8> {
-        let mut builder = flatbuffers::FlatBufferBuilder::new();
-        let mut tables = Vec::with_capacity(self.tables.len());
-        for table in &self.tables {
-            let efile_args = EmbeddedFileArgs {
-                offset: table.offset,
-                length: table.length,
-                content_type: table.content_type,
-                ..Default::default()
-            };
-            let efile = EmbeddedFile::create(&mut builder, &efile_args);
-            tables.push(efile);
-        }
-        let contents = Some(builder.create_vector(&tables));
-
-        let file_identifier = Some(builder.create_string(&self.file_identifier.to_string()));
-        let software = Some(builder.create_string(SOFTWARE));
-        let pod5_version = Some(builder.create_string(POD5_VERSION));
-
-        let fbtable = Footer::create(
-            &mut builder,
-            &FooterArgs {
-                file_identifier,
-                software,
-                pod5_version,
-                contents,
-            },
-        );
-
-        builder.finish_minimal(fbtable);
-        builder.finished_data().to_vec()
+        pod5_format::FooterBuilder::new(
+            self.file_identifier.to_string(),
+            SOFTWARE.to_string(),
+            POD5_VERSION.to_string(),
+        )
+        .build_footer(&self.tables)
     }
 }
 
@@ -417,25 +361,30 @@ where
     table: PhantomData<T>,
 }
 
-impl<W, T> TableWriteGuard<'_, W, T>
+fn pod5_metadata<S: Into<PlSmallStr>>(file_identifier: S) -> Arc<BTreeMap<PlSmallStr, PlSmallStr>> {
+    let mut metadata = Metadata::new();
+    metadata.insert("MINKNOW:pod5_version".into(), POD5_VERSION.into());
+    metadata.insert("MINKNOW:software".into(), SOFTWARE.into());
+    metadata.insert("MINKNOW:file_identifier".into(), file_identifier.into());
+    Arc::new(metadata)
+}
+
+impl<'a, W, T> TableWriteGuard<'a, W, T>
 where
     W: Write + Seek,
     T: IntoTable,
 {
-    // fn new(inner: &'a mut Writer<W>) -> Self {
-    //     let mut metadata = Metadata::new();
-    //     metadata.insert("MINKNOW:pod5_version".into(), POD5_VERSION.into());
-    //     metadata.insert("MINKNOW:software".into(), SOFTWARE.into());
-    //     metadata.insert(
-    //         "MINKNOW:file_identifier".into(),
-    //         inner.file_identifier.to_string().into(),
-    //     );
-    //     Self {
-    //         inner: Some(TableWriter::PreInit(inner)),
-    //         table: PhantomData,
-    //         metadata: Arc::new(metadata),
-    //     }
-    // }
+    pub fn new(writer: &'a mut Writer<W>) -> Result<Self, WriteError> {
+        let metadata = pod5_metadata(writer.file_identifier.to_string());
+        let mut writer = FileWriter::new(writer, T::Schema::as_schema(), None, Default::default());
+        writer.set_custom_schema_metadata(metadata.clone());
+        writer.start()?;
+        Ok(TableWriteGuard {
+            inner: Some(TableWriter::PostInit(writer)),
+            metadata: metadata,
+            table: PhantomData,
+        })
+    }
 
     // pub fn init_take<F>(&mut self, f: F) -> Result<(), WriteError> where F:
     // Fn(&mut Writer<W>) {     let mut w = match self.inner.take() {
@@ -505,7 +454,7 @@ where
         Ok(())
     }
 
-    pub fn finish2(mut self) -> Result<(), WriteError> {
+    pub fn finish(mut self) -> Result<(), WriteError> {
         if let Some(TableWriter::PostInit(mut x)) = self.inner.take() {
             x.finish()?;
             let inner = x.into_inner();
@@ -524,7 +473,7 @@ mod test {
         prelude::{CategoricalChunkedBuilder, CategoricalOrdering, CompatLevel},
         series::{IntoSeries, Series},
     };
-    use polars_arrow::io::ipc::read::{read_file_metadata, FileReader};
+    use polars_arrow::io::ipc::read::{FileReader, read_file_metadata};
 
     use super::*;
     use crate::{
@@ -568,7 +517,7 @@ mod test {
 
     #[test]
     fn test_signal_table_roundtrip() {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
+        let file = File::open("../extra/multi_fast5_zip_v3.pod5").unwrap();
         let mut reader = Reader::from_reader(file).unwrap();
         let buf = Cursor::new(Vec::new());
         let mut reads = reader.signal_dfs().unwrap();
@@ -608,7 +557,7 @@ mod test {
 
     #[test]
     fn test_read_table_roundtrip2() {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
+        let file = File::open("../extra/multi_fast5_zip_v3.pod5").unwrap();
         let mut reader = Reader::from_reader(file).unwrap();
         let buf = Cursor::new(Vec::new());
         let mut reads = reader.read_dfs().unwrap();
@@ -684,7 +633,7 @@ mod test {
 
     #[test]
     fn test_writer_reader_roundtrip() {
-        let file = File::open("extra/multi_fast5_zip_v3.pod5").unwrap();
+        let file = File::open("../extra/multi_fast5_zip_v3.pod5").unwrap();
         let mut reader = Reader::from_reader(file).unwrap();
         println!("BEFORE: {:?}", reader.footer.footer());
         let buf = Cursor::new(Vec::new());
@@ -697,7 +646,8 @@ mod test {
 
         let mut signals = reader.signal_dfs().unwrap();
         let signal_df = signals.next().unwrap().unwrap();
-        writer.write_dataframe(&signal_df).unwrap();
+        writer.with_guard(|g| g.write_batch(&signal_df)).unwrap();
+        // writer.write_dataframe(&signal_df).unwrap();
         // writer
         //     .write_tables_with(|guard| {
         //         // guard.write_table(signal_df.clone())?;

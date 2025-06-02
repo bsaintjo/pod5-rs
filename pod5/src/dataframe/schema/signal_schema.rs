@@ -3,7 +3,7 @@ use std::sync::Arc;
 use polars::prelude::{ArrowField, PlSmallStr};
 use polars_arrow::datatypes::{ArrowDataType, ArrowSchemaRef, ExtensionType};
 
-use super::{name_field, name_field_md};
+use super::{name_field, name_field_md, TableSchema};
 
 pub(crate) fn read_id() -> (PlSmallStr, ArrowField) {
     name_field_md(
@@ -38,6 +38,12 @@ pub struct SignalSchema {
     inner: ArrowSchemaRef,
 }
 
+impl TableSchema for SignalSchema {
+    fn as_schema() -> ArrowSchemaRef {
+        Self::new().inner
+    }
+}
+
 impl SignalSchema {
     pub fn new() -> Self {
         let inner = Arc::new(polars_arrow::datatypes::ArrowSchema::from_iter([
@@ -70,7 +76,7 @@ mod test {
 
     #[test]
     fn test_signal_schema() {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let mut file = File::open(path).unwrap();
         let mut reader = Reader::from_reader(&mut file).unwrap();
         let signal_df_iter = reader.signal_dfs().unwrap();

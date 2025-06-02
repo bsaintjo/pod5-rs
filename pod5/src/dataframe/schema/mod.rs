@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
 use polars::prelude::{ArrowDataType, ArrowField, PlSmallStr};
-use polars_arrow::datatypes::{IntegerType, Metadata};
+use polars_arrow::datatypes::{ArrowSchemaRef, IntegerType, Metadata};
 
 pub mod reads_schema;
 pub mod run_info_schema;
 pub mod signal_schema;
+
+pub trait TableSchema {
+    fn as_schema() -> ArrowSchemaRef;
+}
 
 fn name_field_md<S, I, K, V>(name: S, dtype: ArrowDataType, metadata: I) -> (PlSmallStr, ArrowField)
 where

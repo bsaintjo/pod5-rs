@@ -159,9 +159,9 @@ fn num_ctrl_bytes(count: usize) -> usize {
     (count >> 3) + (((count & 7) + 7) >> 3)
 }
 
-fn max_encoded_length(count: usize) -> usize {
-    num_ctrl_bytes(count) + (2 * count)
-}
+// fn max_encoded_length(count: usize) -> usize {
+//     num_ctrl_bytes(count) + (2 * count)
+// }
 
 #[cfg(test)]
 mod test {
@@ -209,12 +209,12 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_zstd() {
-        let x = max_encoded_length(102400);
-        println!("max encoded: {x}");
-        println!("{:?}", zstd::zstd_safe::compress_bound(x));
-    }
+    // #[test]
+    // fn test_zstd() {
+    //     let x = max_encoded_length(102400);
+    //     println!("max encoded: {x}");
+    //     println!("{:?}", zstd::zstd_safe::compress_bound(x));
+    // }
 
     #[test]
     fn test_components() {
