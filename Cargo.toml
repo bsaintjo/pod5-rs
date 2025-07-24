@@ -2,7 +2,7 @@
 members = [
     "pod5",
     "pod5-arrow",
-    "pod5-format",
+    "pod5-format", "pod5-tokio",
     "pod5frame-py",
     "svb16",
 ]

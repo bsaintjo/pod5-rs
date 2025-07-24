@@ -1,0 +1,11 @@
+[package]
+name = "pod5-tokio"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+tokio = { version = "1.46.1", features = ["full"] }
