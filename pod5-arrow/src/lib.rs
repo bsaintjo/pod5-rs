@@ -76,12 +76,14 @@ impl Reader {
     where
         R: Read + Seek,
     {
-        let parsed = ParsedFooter::read_footer(&mut *reader).unwrap();
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer).unwrap();
+        let parsed = ParsedFooter::read_footer(&buffer).unwrap();
         let st = parsed.signal_table().unwrap();
         let length = st.as_ref().length() as u64;
 
         let mut signal_buf = vec![0u8; length as usize];
-        st.read_to_buf(&mut reader, &mut signal_buf).unwrap();
+        st.read_to_buf(&buffer, &mut signal_buf).unwrap();
         let signal_buf = Cursor::new(signal_buf);
 
         let reader = FileReader::try_new(signal_buf, None).unwrap();
@@ -108,7 +110,7 @@ impl Reader {
 
 #[cfg(test)]
 mod test {
-    use std::{fs::File, io::Cursor};
+    use std::{fs::{self, File}, io::Cursor};
 
     use arrow::array::{
         FixedSizeBinaryArray, Int16DictionaryArray, LargeBinaryArray, ListArray, StringArray,
@@ -139,7 +141,7 @@ mod test {
     #[test]
     fn test_reader2() -> eyre::Result<()> {
         let path = "extra/multi_fast5_zip_v3.pod5";
-        let mut file = File::open(path)?;
+        let mut file = fs::read(path)?;
         let parsed = ParsedFooter::read_footer(&file)?;
         println!("footer: {:?}", parsed.footer());
 
@@ -194,7 +196,7 @@ mod test {
     #[test]
     fn test_reader() -> eyre::Result<()> {
         let path = "extra/multi_fast5_zip_v3.pod5";
-        let mut file = File::open(path)?;
+        let mut file = fs::read(path)?;
         let parsed = ParsedFooter::read_footer(&file)?;
         println!("footer: {:?}", parsed.footer());
 
