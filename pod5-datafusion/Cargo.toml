@@ -13,3 +13,6 @@ async-trait = "0.1.89"
 datafusion = "49.0.2"
 object_store = "0.12.3"
 tempfile = "3.21.0"
+tokio = { version = "1.47.1", features = ["full"] }
+pod5-format.workspace = true
+flatbuffers.workspace = true
