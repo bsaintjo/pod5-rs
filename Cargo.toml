@@ -29,6 +29,7 @@ itertools = "0.14.0"
 
 proptest = "1.6.0"
 
-pod5-polars = { path = "pod5-polars"}
+# Renaming to resolve naming clash with pod5_polars_py::pod5_polars  
+pod5-polars-rs = { package = "pod5-polars", path = "pod5-polars"}
 pod5-format = { path = "pod5-format" }
 svb16 = { path = "svb16" }

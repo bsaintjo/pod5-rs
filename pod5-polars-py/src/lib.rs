@@ -1,5 +1,3 @@
-extern crate pod5_polars as pod5_polars_rs;
-
 use std::{fs::File, path::PathBuf};
 
 use pod5_polars_rs::{dataframe::SignalDataFrame, polars::df, reader::Reader, writer::Writer};
@@ -47,7 +45,7 @@ impl RunInfoIter {
 }
 
 #[pyclass]
-struct ReadIter(crate::pod5_polars_rs::dataframe::ReadDataFrameIter);
+struct ReadIter(pod5_polars_rs::dataframe::ReadDataFrameIter);
 
 #[pymethods]
 impl ReadIter {

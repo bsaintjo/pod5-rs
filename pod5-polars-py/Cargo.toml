@@ -14,7 +14,6 @@ pyo3 = { version = "0.24.2", features = [
     "abi3",
     "abi3-py37",
 ] }
-pod5-polars.workspace = true
-# pod5_polars_rs = { package = "pod5-polars", workspace = true }
+pod5-polars-rs.workspace = true
 svb16.workspace = true
 pyo3-polars = "0.21.0"
