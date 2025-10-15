@@ -9,12 +9,12 @@ Experimental library for interacting with [POD5 files](https://github.com/nanopo
 
 ## Getting Started
 
-### Example with the `polars` integration
+### Example with the `pod5-polars` integration
 
 ```rust
 
 use std::{fs::File, path::PathBuf, error::Error};
-use pod5::{self, reader::Reader};
+use pod5_polars::{self, reader::Reader};
 
 fn run() -> Result<(), Box<dyn Error>> {
     let path = "../extra/multi_fast5_zip_v3.pod5";
@@ -52,19 +52,19 @@ SignalDataFrame(shape: (22, 3)
 
 ## Installation
 
-The crates will eventually be added to `crates.io`. To use any of these crates now, you can use `cargo`'s git parameter to add any of the subcrates to your project. To add the `pod5` to do something similar in the example above, run:
+The crates will eventually be added to `crates.io`. To use any of these crates now, you can use `cargo`'s git parameter to add any of the subcrates to your project. To add the `pod5-polars` to do something similar in the example above, run:
 
 ```bash
-cargo add --git https://github.com/bsaintjo/pod5-rs pod5
+cargo add --git https://github.com/bsaintjo/pod5-rs pod5-polars
 ```
 
 Change `pod5` to any of the crates mentioned in the [Crates](#crates) section for other access.
 
 ## Crates
 
-### `pod5`
+### `pod5-polars`
 
-Reading and writing of POD5 files. Currently focused on using `polars` DataFrame API with further plans to incorporate others.
+Reading and writing of POD5 files with integration with `polars` and its DataFrame API.
 
 ### `pod5frame`
 

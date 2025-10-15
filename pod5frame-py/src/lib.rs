@@ -1,6 +1,6 @@
 use std::{fs::File, path::PathBuf};
 
-use pod5::{dataframe::SignalDataFrame, polars::df, reader::Reader, writer::Writer};
+use pod5_polars::{dataframe::SignalDataFrame, polars::df, reader::Reader, writer::Writer};
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,
@@ -11,7 +11,7 @@ use svb16::{decode, encode};
 
 /// An iterator over the SignalTable, yielding polars DataFrames
 #[pyclass]
-struct SignalIter(pod5::dataframe::SignalDataFrameIter);
+struct SignalIter(pod5_polars::dataframe::SignalDataFrameIter);
 
 #[pymethods]
 impl SignalIter {
@@ -28,7 +28,7 @@ impl SignalIter {
 }
 
 #[pyclass]
-struct RunInfoIter(pod5::dataframe::RunInfoDataFrameIter);
+struct RunInfoIter(pod5_polars::dataframe::RunInfoDataFrameIter);
 
 #[pymethods]
 impl RunInfoIter {
@@ -45,7 +45,7 @@ impl RunInfoIter {
 }
 
 #[pyclass]
-struct ReadIter(pod5::dataframe::ReadDataFrameIter);
+struct ReadIter(pod5_polars::dataframe::ReadDataFrameIter);
 
 #[pymethods]
 impl ReadIter {

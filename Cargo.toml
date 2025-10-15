@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "pod5",
+    "pod5-polars",
     "pod5-arrow",
     "pod5-format",
     "pod5frame-py",
@@ -29,6 +29,6 @@ itertools = "0.14.0"
 
 proptest = "1.6.0"
 
-pod5 = { path = "pod5"}
+pod5-polars = { path = "pod5-polars"}
 pod5-format = { path = "pod5-format" }
 svb16 = { path = "svb16" }

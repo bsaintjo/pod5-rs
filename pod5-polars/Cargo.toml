@@ -1,5 +1,5 @@
 [package]
-name = "pod5"
+name = "pod5-polars"
 version = "0.1.0"
 description = "Interacting with POD5 files in Rust."
 readme = "README.md"
