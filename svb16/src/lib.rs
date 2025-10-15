@@ -218,11 +218,11 @@ mod test {
 
     #[test]
     fn test_components() {
-        let mut compressed_file = File::open("extra/102400-compressed.signal").unwrap();
+        let mut compressed_file = File::open("../extra/102400-compressed.signal").unwrap();
         let mut compressed = Vec::new();
         compressed_file.read_to_end(&mut compressed).unwrap();
 
-        let mut decompressed_file = File::open("extra/102400-decompressed.signal").unwrap();
+        let mut decompressed_file = File::open("../extra/102400-decompressed.signal").unwrap();
         let mut decompressed = String::new();
         decompressed_file.read_to_string(&mut decompressed).unwrap();
         let decompressed = decompressed
@@ -253,11 +253,11 @@ mod test {
 
     #[test]
     fn test_compatibility() {
-        let mut compressed_file = File::open("extra/102400-compressed.signal").unwrap();
+        let mut compressed_file = File::open("../extra/102400-compressed.signal").unwrap();
         let mut compressed = Vec::new();
         compressed_file.read_to_end(&mut compressed).unwrap();
 
-        let mut decompressed_file = File::open("extra/102400-decompressed.signal").unwrap();
+        let mut decompressed_file = File::open("../extra/102400-decompressed.signal").unwrap();
         let mut decompressed = String::new();
         decompressed_file.read_to_string(&mut decompressed).unwrap();
         let decompressed = decompressed

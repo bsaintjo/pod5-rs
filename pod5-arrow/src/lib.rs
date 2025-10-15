@@ -122,7 +122,7 @@ mod test {
     #[test]
     #[ignore]
     fn test_read_reader() -> eyre::Result<()> {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let mut file = File::open(path)?;
         let reader = Reader::from_reader(&mut file);
         for record in reader.reads() {
@@ -138,7 +138,7 @@ mod test {
 
     #[test]
     fn test_reader2() -> eyre::Result<()> {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let mut file = File::open(path)?;
         let parsed = ParsedFooter::read_footer(&file)?;
         println!("footer: {:?}", parsed.footer());
@@ -193,7 +193,7 @@ mod test {
 
     #[test]
     fn test_reader() -> eyre::Result<()> {
-        let path = "extra/multi_fast5_zip_v3.pod5";
+        let path = "../extra/multi_fast5_zip_v3.pod5";
         let mut file = File::open(path)?;
         let parsed = ParsedFooter::read_footer(&file)?;
         println!("footer: {:?}", parsed.footer());
