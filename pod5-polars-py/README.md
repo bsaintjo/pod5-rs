@@ -2,7 +2,7 @@
 
 Explore POD5 files using DataFrames from polars.
 
-This provides a Python module bindings to the `pod5` rust crate, so we can re-use those functions in Python.
+This provides a Python module bindings to the `pod5-polars` Rust crate, so we can re-use those functions in Python.
 
 ## Installation
 
@@ -15,10 +15,10 @@ Currently being built with Python 3.11 and Rust 1.85
 $ source .venv/bin/activate
 
 # Install maturin tool for building Python wheels from Rust crate
-(pod5frame-py) $ pip install maturin
+$ pip install maturin
 
 # Automatically build wheel and install into virtual environment
-(pod5frame-py) $ maturin develop
+$ maturin develop
 📦 Built wheel for CPython 3.11 to /var/folders/s4/z4m2bhxj06g5pqdm6qgmq_bm0000gp/T/.tmphaRgIx/pod5frame-0.1.0-cp311-cp311-macosx_11_0_arm64.whl
 ✏️ Setting installed package as editable
 🛠 Installed pod5frame-0.1.0
@@ -30,7 +30,7 @@ Until the package gets into decent shape, I'll hold off on uploading to PyPI. If
 
 ```bash
 git clone https://github.com/bsaintjo/pod5-rs.git
-cd pod5-rs/pod5frame-py
+cd pod5-rs/pod5-polars-py
 pip install -e .
 ```
 
@@ -41,7 +41,7 @@ pip install -e .
 The API is setup to mirror the official Python API for easy of use.
 
 ```python
-import pod5frame as p5f
+import pod5_polars as p5f
 
 with p5f.FrameReader("example.pod5") as reader:
     for signal_df in reader.signal():
@@ -79,7 +79,7 @@ Output
 ## Why not use this package?
 
 - Experimental
-- Polars tends to be more suited to operations over columns rather than rows. If you
+- Polars tends to be more suited to operations over columns rather than rows.
 
 ## License
 

@@ -3,7 +3,7 @@ requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "pod5frame"
+name = "pod5-polars"
 authors = [{ name = "Brandon Saint-John" }]
 requires-python = ">=3.8"
 classifiers = [
@@ -22,12 +22,11 @@ classifiers = [
 ]
 dynamic = ["version"]
 readme = "README.md"
-license-files = ["../LICENSE*"]
 license = "MIT OR Apache-2.0"
 dependencies = ["polars"]
 
 [project.urls]
-source = "https://github.com/bsaintjo/pod5-rs/tree/dev/pod5frame-py"
+source = "https://github.com/bsaintjo/pod5-rs/tree/dev/pod5-polars-py"
 
 [project.optional-dependencies]
 dev = ["pytest", "pdoc"]

@@ -66,9 +66,9 @@ Change `pod5` to any of the crates mentioned in the [Crates](#crates) section fo
 
 Reading and writing of POD5 files with integration with `polars` and its DataFrame API.
 
-### `pod5frame`
+### `pod5-polars-py`
 
-Exports the Polars POD5 DataFrame API as a Python package. To use this in Python and install in a Python virtual environment, please read the [Python installation instructions](./pod5frame-py/README.md#installation).
+Exports the Polars POD5 DataFrame API as a Python package. To use this in Python and install in a Python virtual environment, please read the [Python installation instructions](./pod5-polars-py/README.md#installation).
 
 ### `pod5-format`
 

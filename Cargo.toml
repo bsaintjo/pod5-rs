@@ -3,7 +3,7 @@ members = [
     "pod5-polars",
     "pod5-arrow",
     "pod5-format",
-    "pod5frame-py",
+    "pod5-polars-py",
     "svb16",
 ]
 resolver = "3"

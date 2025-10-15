@@ -1,5 +1,5 @@
 import pytest
-import pod5frame as p5f
+import pod5_polars as p5f
 import polars as pl
 
 

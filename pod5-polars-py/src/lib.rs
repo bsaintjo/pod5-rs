@@ -1,6 +1,8 @@
+extern crate pod5_polars as pod5_polars_rs;
+
 use std::{fs::File, path::PathBuf};
 
-use pod5_polars::{dataframe::SignalDataFrame, polars::df, reader::Reader, writer::Writer};
+use pod5_polars_rs::{dataframe::SignalDataFrame, polars::df, reader::Reader, writer::Writer};
 use pyo3::{
     exceptions::{PyException, PyIOError, PyNotImplementedError},
     prelude::*,
@@ -11,7 +13,7 @@ use svb16::{decode, encode};
 
 /// An iterator over the SignalTable, yielding polars DataFrames
 #[pyclass]
-struct SignalIter(pod5_polars::dataframe::SignalDataFrameIter);
+struct SignalIter(pod5_polars_rs::dataframe::SignalDataFrameIter);
 
 #[pymethods]
 impl SignalIter {
@@ -28,7 +30,7 @@ impl SignalIter {
 }
 
 #[pyclass]
-struct RunInfoIter(pod5_polars::dataframe::RunInfoDataFrameIter);
+struct RunInfoIter(pod5_polars_rs::dataframe::RunInfoDataFrameIter);
 
 #[pymethods]
 impl RunInfoIter {
@@ -45,7 +47,7 @@ impl RunInfoIter {
 }
 
 #[pyclass]
-struct ReadIter(pod5_polars::dataframe::ReadDataFrameIter);
+struct ReadIter(crate::pod5_polars_rs::dataframe::ReadDataFrameIter);
 
 #[pymethods]
 impl ReadIter {
@@ -229,7 +231,7 @@ fn load(_path: PathBuf) -> PyResult<PyDataFrame> {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn pod5frame(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn pod5_polars(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_function(wrap_pyfunction!(load, m)?)?;
     m.add_class::<FrameReader>()?;
