@@ -2,29 +2,43 @@ use std::{any::Any, sync::Arc};
 
 use async_trait::async_trait;
 use datafusion::{
-    arrow::datatypes::SchemaRef,
-    catalog::Session,
+    arrow::{
+        array::RecordBatch,
+        datatypes::{Schema, SchemaRef},
+    },
+    catalog::{
+        MemTable, Session,
+    },
     datasource::{TableProvider, TableType},
-    error::Result,
+    error::{DataFusionError, Result},
     physical_plan::ExecutionPlan,
     prelude::Expr,
 };
 
 #[derive(Debug)]
-pub struct SignalTableProvider;
+pub struct Pod5TableProvider {
+    table: MemTable,
+}
+
+impl Pod5TableProvider {
+    pub fn new(schema: Arc<Schema>, batches: Vec<RecordBatch>) -> Result<Self, DataFusionError> {
+        let table = MemTable::try_new(schema, vec![batches])?;
+        Ok(Self { table })
+    }
+}
 
 #[async_trait]
-impl TableProvider for SignalTableProvider {
+impl TableProvider for Pod5TableProvider {
     fn as_any(&self) -> &dyn Any {
-        todo!()
+        self
     }
 
     fn schema(&self) -> SchemaRef {
-        todo!()
+        self.table.schema()
     }
 
     fn table_type(&self) -> TableType {
-        todo!()
+        self.table.table_type()
     }
 
     async fn scan(
@@ -34,6 +48,6 @@ impl TableProvider for SignalTableProvider {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        todo!()
+        self.table.scan(state, projection, filters, limit).await
     }
 }
