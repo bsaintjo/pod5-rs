@@ -2,6 +2,7 @@
 members = [
     "pod5-polars",
     "pod5-arrow",
+    "pod5-datafusion",
     "pod5-format",
     "pod5-polars-py",
     "svb16",

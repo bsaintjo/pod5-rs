@@ -1,0 +1,15 @@
+[package]
+name = "pod5-datafusion"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+arrow = "56.0.0"
+async-trait = "0.1.89"
+datafusion = "49.0.2"
+object_store = "0.12.3"
+tempfile = "3.21.0"
