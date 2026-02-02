@@ -18,14 +18,19 @@ where
     R: Read + Seek,
 {
     pub fn from_reader(mut reader: R) -> Result<Self, Pod5Error> {
-        if !valid_signature(&mut reader)? {
+        let mut signature = [0u8; 8];
+        reader.read_exact(&mut signature)?;
+        if !valid_signature(&mut signature) {
             return Err(Pod5Error::SignatureFailure("Start"));
         }
         reader.seek(SeekFrom::End(-8))?;
-        if !valid_signature(&mut reader)? {
+        reader.read_exact(&mut signature)?;
+        if !valid_signature(&mut signature) {
             return Err(Pod5Error::SignatureFailure("End"));
         }
-        let footer = ParsedFooter::read_footer(&mut reader)?;
+        let mut footer_bytes = Vec::new();
+        reader.read_to_end(&mut footer_bytes)?;
+        let footer = ParsedFooter::read_footer(&mut footer_bytes)?;
         Ok(Self { reader, footer })
     }
 

@@ -1,4 +1,4 @@
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 
 use flatbuffers::root;
 use footer_generated::minknow::reads_format::{
@@ -54,12 +54,13 @@ impl ReadTable {
         &self.0
     }
 
-    pub fn read_to_buf<R: Read + Seek>(
+    pub fn read_to_buf(
         &self,
-        reader: &mut R,
+        reader: &[u8],
         buf: &mut [u8],
     ) -> Result<(), io::Error> {
         let offset = self.0.offset() as u64;
+        let mut reader = Cursor::new(reader);
         // let length = self.0.length() as u64;
 
         reader.seek(SeekFrom::Start(offset))?;
@@ -72,11 +73,12 @@ impl ReadTable {
 pub struct SignalTable(TableInfo);
 
 impl SignalTable {
-    pub fn read_to_buf<R: Read + Seek>(
+    pub fn read_to_buf(
         &self,
-        reader: &mut R,
+        reader: &[u8],
         buf: &mut [u8],
     ) -> Result<(), io::Error> {
+        let mut reader = Cursor::new(reader);
         let offset = self.0.offset() as u64;
         // let length = self.0.length() as u64;
 
@@ -99,16 +101,18 @@ pub struct ParsedFooter {
 impl ParsedFooter {
     /// Parse a POD5 Flatbuffer footer from a reader containg data from a POD5
     /// file.
-    pub fn read_footer<R: Read + Seek>(mut reader: R) -> Result<Self, FormatError> {
-        reader.rewind().map_err(FooterError::FooterIOError)?;
+    pub fn read_footer(bytes: &[u8]) -> Result<Self, FormatError> {
+        // reader.rewind().map_err(FooterError::FooterIOError)?;
         // let file_size = reader.stream_len()?;
         // let footer_length_end: u64 = (file_size - FILE_SIGNATURE.len() as u64) - 16;
         // let footer_length = footer_length_end - 8;
+        let mut reader = Cursor::new(bytes);
         let footer_length = -(FILE_SIGNATURE.len() as i64) + (-16) + (-8);
         reader
             .seek(SeekFrom::End(footer_length))
             .map_err(FooterError::FooterIOError)?;
         let mut buf = [0; 8];
+
         reader
             .read_exact(&mut buf)
             .map_err(FooterError::FooterIOError)?;
@@ -239,11 +243,10 @@ impl FooterBuilder {
     /// library may already pad the write. For now, the current iteration is
     /// correctly parsed by the official `pod5` tools, in case you wonder
     /// why there isn't any code for padding in the source.
-    pub fn write_footer<W>(&self, tables: &[TableInfo], writer: &mut W) -> Result<(), FormatError>
-    where
-        W: Write,
+    pub fn write_footer(&self, tables: &[TableInfo]) -> Result<Vec<u8>, FormatError>
     {
         // Footer magic
+        let mut writer = BufWriter::new(Vec::new());
         writer
             .write_all(&FOOTER_MAGIC)
             .map_err(FooterError::FooterIOError)?;
@@ -259,21 +262,21 @@ impl FooterBuilder {
             .write_all(&footer_len_bytes)
             .map_err(FooterError::FooterIOError)?;
 
-        Ok(())
+        writer.into_inner().map_err(|_| FormatError::FooterError(FooterError::ContentsMissing))
     }
 }
 
 #[cfg(test)]
 mod test {
 
-    use std::fs::File;
+    use std::fs::{self, File};
 
     use super::*;
 
     #[test]
     fn test_footer() -> eyre::Result<()> {
         let path = "../extra/multi_fast5_zip_v3.pod5";
-        let file = File::open(path)?;
+        let file = fs::read(path)?;
         let footer = ParsedFooter::read_footer(&file)?;
         assert!(footer.read_table().is_ok());
         assert!(footer.run_info_table().is_ok());
