@@ -28,6 +28,7 @@ where
         if !valid_signature(&mut signature) {
             return Err(Pod5Error::SignatureFailure("End"));
         }
+        reader.rewind()?;
         let mut footer_bytes = Vec::new();
         reader.read_to_end(&mut footer_bytes)?;
         let footer = ParsedFooter::read_footer(&mut footer_bytes)?;

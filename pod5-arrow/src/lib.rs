@@ -141,15 +141,17 @@ mod test {
     #[test]
     fn test_reader2() -> eyre::Result<()> {
         let path = "../extra/multi_fast5_zip_v3.pod5";
+        let mut buf = Vec::new();
         let mut file = File::open(path)?;
-        let parsed = ParsedFooter::read_footer(&file)?;
+        file.read_to_end(&mut buf);
+        let parsed = ParsedFooter::read_footer(&buf)?;
         println!("footer: {:?}", parsed.footer());
 
         let rt = parsed.read_table()?;
         let length = rt.as_ref().length() as u64;
 
         let mut table_buf = vec![0u8; length as usize];
-        rt.read_to_buf(&mut file, &mut table_buf)?;
+        rt.read_to_buf(&buf, &mut table_buf)?;
         let signal_buf = Cursor::new(table_buf);
         let mut reader = FileReader::try_new(signal_buf, None)?;
         dbg!(reader.schema());
@@ -196,15 +198,17 @@ mod test {
     #[test]
     fn test_reader() -> eyre::Result<()> {
         let path = "../extra/multi_fast5_zip_v3.pod5";
+        let mut buf = Vec::new();
         let mut file = File::open(path)?;
-        let parsed = ParsedFooter::read_footer(&file)?;
+        file.read_to_end(&mut buf);
+        let parsed = ParsedFooter::read_footer(&buf)?;
         println!("footer: {:?}", parsed.footer());
 
         let st = parsed.signal_table()?;
         let length = st.as_ref().length() as u64;
 
         let mut signal_buf = vec![0u8; length as usize];
-        st.read_to_buf(&mut file, &mut signal_buf)?;
+        st.read_to_buf(&buf, &mut signal_buf)?;
         let signal_buf = Cursor::new(signal_buf);
 
         let mut reader = FileReader::try_new(signal_buf, None)?;

@@ -1,8 +1,6 @@
 mod error;
 pub mod footer;
 
-use std::io::{Read, Seek};
-
 pub use error::FormatError;
 pub use footer::ParsedFooter;
 pub use footer::FooterBuilder;

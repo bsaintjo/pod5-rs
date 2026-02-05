@@ -269,7 +269,7 @@ impl FooterBuilder {
 #[cfg(test)]
 mod test {
 
-    use std::fs::{self, File};
+    use std::fs;
 
     use super::*;
 
