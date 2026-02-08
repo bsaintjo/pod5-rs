@@ -8,4 +8,5 @@ repository.workspace = true
 keywords.workspace = true
 
 [dependencies]
+pod5-format = { version = "0.1.0", path = "../pod5-format" }
 tokio = { version = "1.49.0", features = ["full"] }
